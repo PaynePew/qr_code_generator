@@ -8,6 +8,8 @@ venv/
 
 # SQLite
 *.db
+*.db-shm
+*.db-wal
 
 # Editor / OS
 .DS_Store
