@@ -1,7 +1,7 @@
 from datetime import datetime, timezone, timedelta
 
-from models import Link
-from qr_generator import generate_qr_png
+from backend.models import Link
+from backend.qr_generator import generate_qr_png
 
 PNG_MAGIC = b"\x89PNG"
 

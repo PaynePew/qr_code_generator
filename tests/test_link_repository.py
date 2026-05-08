@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 import pytest
 from fastapi import HTTPException
 
-import link_repository
-from models import Link
+from backend import link_repository
+from backend.models import Link
 
 
 NOW = datetime(2026, 5, 8, 12, 0, 0)

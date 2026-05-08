@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
-import scan_repository
-from models import Scan
+from backend import scan_repository
+from backend.models import Scan
 
 
 NOW = datetime(2026, 5, 8, 12, 0, 0)

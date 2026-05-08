@@ -3,8 +3,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from link_state import LinkState, derive_state
-from models import Link
+from backend.link_state import LinkState, derive_state
+from backend.models import Link
 
 
 NOW = datetime(2026, 5, 8, 12, 0, 0)

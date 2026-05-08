@@ -9,9 +9,9 @@ from sqlalchemy.pool import StaticPool
 os.environ.setdefault("SECRET", "test-secret-value")
 os.environ.setdefault("BASE_URL", "http://testserver")
 
-from main import app
-from models import Base
-from router import get_db
+from backend.main import app
+from backend.models import Base
+from backend.router import get_db
 
 
 @pytest.fixture

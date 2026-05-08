@@ -1,5 +1,5 @@
 import pytest
-from url_validator import validate_and_normalize, InvalidURLError
+from backend.url_validator import validate_and_normalize, InvalidURLError
 
 
 class TestNormalization:

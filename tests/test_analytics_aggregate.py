@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 
-from analytics import aggregate_scans, DEFAULT_RECENT_LIMIT
-from models import Scan
+from backend.analytics import aggregate_scans, DEFAULT_RECENT_LIMIT
+from backend.models import Scan
 
 
 def _scan(scanned_at: datetime, status_code: int = 302, ip="1.2.3.4", ua="UA/1.0") -> Scan:

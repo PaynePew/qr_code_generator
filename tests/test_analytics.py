@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from models import Scan
+from backend.models import Scan
 
 
 class TestScanLogging:

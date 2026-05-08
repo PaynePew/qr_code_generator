@@ -1,6 +1,6 @@
 import pytest
 from sqlalchemy.exc import IntegrityError
-from token_generator import generate_token, allocate_token, TokenCollisionError
+from backend.token_generator import generate_token, allocate_token, TokenCollisionError
 
 BASE62_CHARS = set("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
 

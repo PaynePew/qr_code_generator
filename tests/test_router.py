@@ -244,7 +244,7 @@ class TestEnvVarRequirements:
         secret = os.environ.pop("SECRET", None)
         try:
             import importlib
-            import main as m
+            import backend.main as m
             with pytest.raises((RuntimeError, KeyError, Exception)):
                 with TestClient(m.app) as c:
                     c.get("/")
@@ -255,7 +255,7 @@ class TestEnvVarRequirements:
     def test_base_url_env_var_required(self):
         base_url = os.environ.pop("BASE_URL", None)
         try:
-            import main as m
+            import backend.main as m
             with pytest.raises((RuntimeError, KeyError, Exception)):
                 with TestClient(m.app) as c:
                     c.get("/")
