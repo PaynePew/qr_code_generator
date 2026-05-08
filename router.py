@@ -155,17 +155,17 @@ def patch_link(token: str, body: PatchRequest, db: Session = Depends(get_db)):
     if link.deleted_at is not None:
         raise HTTPException(status_code=410, detail="Link is deleted")
 
-    updatable = {"original_url", "expires_at"} & body.model_fields_set
-    if not updatable:
+    fields_to_update = body.model_fields_set & {"original_url", "expires_at"}
+    if not fields_to_update:
         raise HTTPException(status_code=422, detail="No updatable fields provided")
 
-    if "original_url" in updatable:
+    if "original_url" in fields_to_update:
         try:
             link.original_url = validate_and_normalize(body.original_url)
         except InvalidURLError as e:
             raise HTTPException(status_code=422, detail=str(e))
 
-    if "expires_at" in updatable:
+    if "expires_at" in fields_to_update:
         link.expires_at = body.expires_at.replace(tzinfo=None) if body.expires_at else None
 
     link.updated_at = _now_utc()

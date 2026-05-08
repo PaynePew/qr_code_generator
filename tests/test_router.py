@@ -140,7 +140,10 @@ class TestInfoEndpoint:
     def test_info_response_shape(self, client):
         token = client.post("/api/qr/create", json={"url": "https://example.com/shape"}).json()["token"]
         data = client.get(f"/api/qr/{token}").json()
-        for field in ("token", "original_url", "short_url", "qr_code_url", "status", "created_at", "updated_at", "expires_at"):
+        for field in (
+            "token", "original_url", "short_url", "qr_code_url",
+            "status", "created_at", "updated_at", "expires_at",
+        ):
             assert field in data
 
     def test_info_status_active_for_live_link(self, client):
