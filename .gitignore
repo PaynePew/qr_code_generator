@@ -15,7 +15,7 @@ venv/
 .idea/
 
 # Claude local settings
-.claude/settings.local.json
+.claude/
 
 # node_modules
 node_modules/
