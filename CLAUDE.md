@@ -11,3 +11,7 @@ Default label vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `read
 ### Domain docs
 
 Single-context layout — `CONTEXT.md` and `docs/adr/` at repo root. See `docs/agents/domain.md`.
+
+## Frontend Development Workflow
+
+- Use the loaded `frontend-skill` to ensure best practices for React, Tailwind and UI design.
