@@ -210,7 +210,7 @@ def get_analytics(token: str, db: Session = Depends(get_db)):
 
     all_scans = db.query(Scan).filter(Scan.token == token).all()
 
-    day_data: dict = defaultdict(lambda: {"count": 0, "status_codes": defaultdict(int)})
+    day_data = defaultdict(lambda: {"count": 0, "status_codes": defaultdict(int)})
     for scan in all_scans:
         day = scan.scanned_at.date().isoformat()
         day_data[day]["count"] += 1
@@ -221,13 +221,6 @@ def get_analytics(token: str, db: Session = Depends(get_db)):
         for day, data in sorted(day_data.items())
     ]
 
-    recent = (
-        db.query(Scan)
-        .filter(Scan.token == token)
-        .order_by(Scan.scanned_at.desc())
-        .limit(50)
-        .all()
-    )
     recent_scans = [
         {
             "scanned_at": scan.scanned_at.isoformat(),
@@ -235,7 +228,7 @@ def get_analytics(token: str, db: Session = Depends(get_db)):
             "ip_address": scan.ip_address,
             "user_agent": scan.user_agent,
         }
-        for scan in recent
+        for scan in sorted(all_scans, key=lambda s: s.scanned_at, reverse=True)[:50]
     ]
 
     return {
