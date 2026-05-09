@@ -17,7 +17,8 @@ from .token_generator import TokenCollisionError
 from .url_validator import validate_and_normalize, InvalidURLError
 from .qr_generator import generate_qr_png
 
-router = APIRouter()
+router = APIRouter(prefix="/api")
+redirect_router = APIRouter()
 
 
 def get_db():
@@ -75,7 +76,7 @@ class CreateRequest(BaseModel):
     expires_at: Optional[datetime] = None
 
 
-@router.post("/api/qr/create")
+@router.post("/qr/create")
 def create_qr(body: CreateRequest, db: Session = Depends(get_db)):
     try:
         normalized_url = validate_and_normalize(body.url)
@@ -106,7 +107,7 @@ def create_qr(body: CreateRequest, db: Session = Depends(get_db)):
     }
 
 
-@router.get("/api/qr/{token}/image")
+@router.get("/qr/{token}/image")
 def qr_image(token: str, db: Session = Depends(get_db)):
     link_repository.get_or_404(db, token)
     cfg = _config()
@@ -115,7 +116,7 @@ def qr_image(token: str, db: Session = Depends(get_db)):
     return Response(content=png_bytes, media_type="image/png")
 
 
-@router.get("/r/{token}")
+@redirect_router.get("/r/{token}")
 def redirect(token: str, request: Request, db: Session = Depends(get_db)):
     link = link_repository.get_or_404(db, token)
 
@@ -128,7 +129,7 @@ def redirect(token: str, request: Request, db: Session = Depends(get_db)):
     return RedirectResponse(url=link.original_url, status_code=302)
 
 
-@router.get("/api/qr/{token}")
+@router.get("/qr/{token}")
 def get_link_info(token: str, db: Session = Depends(get_db)):
     link = link_repository.get_or_404(db, token)
     cfg = _config()
@@ -142,7 +143,7 @@ class PatchRequest(BaseModel):
     expires_at: Optional[datetime] = None
 
 
-@router.patch("/api/qr/{token}")
+@router.patch("/qr/{token}")
 def patch_link(token: str, body: PatchRequest, db: Session = Depends(get_db)):
     link = link_repository.get_or_404(db, token)
 
@@ -181,14 +182,14 @@ def patch_link(token: str, body: PatchRequest, db: Session = Depends(get_db)):
     return _link_response(link, cfg["base_url"], new_state)
 
 
-@router.delete("/api/qr/{token}")
+@router.delete("/qr/{token}")
 def delete_link(token: str, db: Session = Depends(get_db)):
     link = link_repository.get_or_404(db, token)
     link_repository.mark_deleted(db, link, _now_utc())
     return {"token": token, "status": "deleted"}
 
 
-@router.get("/api/qr/{token}/analytics")
+@router.get("/qr/{token}/analytics")
 def get_analytics(token: str, db: Session = Depends(get_db)):
     link_repository.get_or_404(db, token)
     scans = scan_repository.scans_for_token(db, token)

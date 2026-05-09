@@ -13,7 +13,7 @@ export interface CreateQrResponse {
 }
 
 export async function createQr(body: CreateQrRequest): Promise<CreateQrResponse> {
-  const { data } = await apiClient.post<CreateQrResponse>('/qr/create', body)
+  const { data } = await apiClient.post<CreateQrResponse>('/api/qr/create', body)
   return data
 }
 
@@ -31,7 +31,7 @@ export interface GetLinkResponse {
 }
 
 export async function getLink(token: string): Promise<GetLinkResponse> {
-  const { data } = await apiClient.get<GetLinkResponse>(`/qr/${token}`)
+  const { data } = await apiClient.get<GetLinkResponse>(`/api/qr/${token}`)
   return data
 }
 
@@ -41,12 +41,12 @@ export interface PatchLinkRequest {
 }
 
 export async function patchLink(token: string, body: PatchLinkRequest): Promise<GetLinkResponse> {
-  const { data } = await apiClient.patch<GetLinkResponse>(`/qr/${token}`, body)
+  const { data } = await apiClient.patch<GetLinkResponse>(`/api/qr/${token}`, body)
   return data
 }
 
 export async function deleteLink(token: string): Promise<void> {
-  await apiClient.delete(`/qr/${token}`)
+  await apiClient.delete(`/api/qr/${token}`)
 }
 
 export interface ScanByDay {
@@ -70,6 +70,6 @@ export interface AnalyticsResponse {
 }
 
 export async function getAnalytics(token: string): Promise<AnalyticsResponse> {
-  const { data } = await apiClient.get<AnalyticsResponse>(`/qr/${token}/analytics`)
+  const { data } = await apiClient.get<AnalyticsResponse>(`/api/qr/${token}/analytics`)
   return data
 }
