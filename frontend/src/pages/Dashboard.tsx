@@ -1,13 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Copy, Check } from 'lucide-react'
 import { listTokens, type HistoryEntry } from '@/state/linkHistory'
-import { getLink, type GetLinkResponse, type LinkStatus } from '@/api/qr'
+import { getLink, type GetLinkResponse } from '@/api/qr'
 import { linkKey } from '@/api/queryKeys'
 import type { ApiError } from '@/api/client'
-
-type DerivedStatus = LinkStatus | 'missing'
+import { CopyButton } from '@/components/ui/CopyButton'
+import { StatusBadge, type DerivedStatus } from '@/components/ui/StatusBadge'
 
 const rtf = new Intl.RelativeTimeFormat('zh-TW', { numeric: 'auto' })
 const dtf = new Intl.DateTimeFormat('zh-TW', {
@@ -37,50 +35,6 @@ function truncateUrl(url: string, max = 50): string {
   return url.slice(0, max) + '…'
 }
 
-const STATUS_LABEL: Record<DerivedStatus, string> = {
-  active: '使用中',
-  expired: '已過期',
-  deleted: '已刪除',
-  missing: '找不到',
-}
-
-const STATUS_CLASS: Record<DerivedStatus, string> = {
-  active: 'bg-green-100 text-green-800',
-  expired: 'bg-amber-100 text-amber-800',
-  deleted: 'bg-gray-100 text-gray-500 line-through',
-  missing: 'bg-red-100 text-red-700',
-}
-
-function StatusBadge({ status }: { status: DerivedStatus }) {
-  return (
-    <span className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${STATUS_CLASS[status]}`}>
-      {STATUS_LABEL[status]}
-    </span>
-  )
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-
-  function handleCopy() {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
-
-  return (
-    <button
-      onClick={handleCopy}
-      className="ml-1 inline-flex items-center rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors"
-      title="複製短網址"
-      type="button"
-    >
-      {copied ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
-    </button>
-  )
-}
-
 function LinkCard({ entry }: { entry: HistoryEntry }) {
   const navigate = useNavigate()
   const query = useQuery<GetLinkResponse, ApiError>({
@@ -97,8 +51,7 @@ function LinkCard({ entry }: { entry: HistoryEntry }) {
   const shortUrl = query.data?.short_url ?? `…/r/${entry.token}`
 
   function handleCardClick(e: React.MouseEvent) {
-    // Don't navigate if user clicked the copy button
-    if ((e.target as HTMLElement).closest('button[title="複製短網址"]')) return
+    if ((e.target as HTMLElement).closest('button')) return
     navigate(`/dashboard/${entry.token}`)
   }
 
@@ -108,7 +61,7 @@ function LinkCard({ entry }: { entry: HistoryEntry }) {
       onClick={handleCardClick}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(`/dashboard/${entry.token}`) }}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/dashboard/${entry.token}`) } }}
       aria-label={`查看 ${entry.token} 的詳情`}
     >
       <div className="flex items-start justify-between gap-2">
@@ -123,7 +76,7 @@ function LinkCard({ entry }: { entry: HistoryEntry }) {
             載入中
           </span>
         ) : (
-          <StatusBadge status={status} />
+          <StatusBadge status={status} className={status === 'deleted' ? 'line-through' : undefined} />
         )}
       </div>
 

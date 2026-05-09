@@ -3,8 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useForm } from '@tanstack/react-form'
 import { toast } from 'sonner'
-import { Copy, Check, ArrowLeft, Loader2, Trash2, Pencil } from 'lucide-react'
-import { getLink, patchLink, deleteLink, type GetLinkResponse, type LinkStatus } from '@/api/qr'
+import { ArrowLeft, Loader2, Trash2, Pencil } from 'lucide-react'
+import { getLink, patchLink, deleteLink, type GetLinkResponse } from '@/api/qr'
 import { linkKey } from '@/api/queryKeys'
 import type { ApiError } from '@/api/client'
 import { urlSchema } from '@/schemas/url'
@@ -13,10 +13,10 @@ import { create as createRenderer, type QRRenderer } from '@/qr/renderer'
 import { markDeleted } from '@/state/linkHistory'
 import { getToastOptions } from '@/lib/toastOptions'
 import { Button } from '@/components/ui/button'
+import { CopyButton } from '@/components/ui/CopyButton'
+import { StatusBadge, type DerivedStatus } from '@/components/ui/StatusBadge'
 
 const BASE_URL = import.meta.env.VITE_BASE_URL ?? window.location.origin
-
-type DerivedStatus = LinkStatus | 'missing'
 
 const dtf = new Intl.DateTimeFormat('zh-TW', {
   year: 'numeric',
@@ -29,52 +29,6 @@ const dtf = new Intl.DateTimeFormat('zh-TW', {
 function absoluteTime(isoDate: string | null): string {
   if (!isoDate) return '永不過期'
   return dtf.format(new Date(isoDate))
-}
-
-const STATUS_LABEL: Record<DerivedStatus, string> = {
-  active: '使用中',
-  expired: '已過期',
-  deleted: '已刪除',
-  missing: '找不到',
-}
-
-const STATUS_CLASS: Record<DerivedStatus, string> = {
-  active: 'bg-green-100 text-green-800',
-  expired: 'bg-amber-100 text-amber-800',
-  deleted: 'bg-gray-100 text-gray-500',
-  missing: 'bg-red-100 text-red-700',
-}
-
-function StatusBadge({ status }: { status: DerivedStatus }) {
-  return (
-    <span
-      className={`inline-flex items-center rounded px-2 py-0.5 text-xs font-medium ${STATUS_CLASS[status]}`}
-    >
-      {STATUS_LABEL[status]}
-    </span>
-  )
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false)
-
-  function handleCopy() {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
-  }
-
-  return (
-    <button
-      onClick={handleCopy}
-      className="ml-1 inline-flex items-center rounded p-0.5 text-muted-foreground hover:text-foreground transition-colors"
-      title="複製短網址"
-      type="button"
-    >
-      {copied ? <Check className="h-3.5 w-3.5 text-green-600" /> : <Copy className="h-3.5 w-3.5" />}
-    </button>
-  )
 }
 
 function validateUrl(value: string): string | undefined {
@@ -330,7 +284,7 @@ export function LinkDetail() {
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">目標網址</span>
-                {!isEditing && !isDeleted && status !== 'deleted' && (
+                {!isEditing && status !== 'deleted' && (
                   <button
                     type="button"
                     onClick={() => setIsEditing(true)}
@@ -372,9 +326,7 @@ export function LinkDetail() {
               </div>
               <div>
                 <span className="block text-xs text-muted-foreground">到期時間</span>
-                <span className="font-medium">
-                  {query.data.expires_at ? absoluteTime(query.data.expires_at) : '永不過期'}
-                </span>
+                <span className="font-medium">{absoluteTime(query.data.expires_at)}</span>
               </div>
             </div>
           </div>
@@ -391,7 +343,7 @@ export function LinkDetail() {
             </p>
           </div>
 
-          {!isDeleted && status !== 'deleted' && (
+          {status !== 'deleted' && (
             <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-5 flex flex-col gap-3">
               <h2 className="text-sm font-semibold text-destructive uppercase tracking-wide">
                 危險操作
