@@ -1,17 +1,17 @@
 from datetime import datetime
 from typing import Optional
 
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from .link_state import LinkNotFoundError, ensure_patchable
 from .models import Link
 from .token_generator import allocate_token, TokenCollisionError
 
 
-def get_or_404(db: Session, token: str) -> Link:
+def get_link(db: Session, token: str) -> Link:
     link = db.query(Link).filter(Link.token == token).first()
     if link is None:
-        raise HTTPException(status_code=404, detail="Token not found")
+        raise LinkNotFoundError(token)
     return link
 
 
@@ -57,6 +57,7 @@ def apply_patch(
     expires_at: Optional[datetime] = None,
     now: datetime,
 ) -> Link:
+    ensure_patchable(link, now)
     if "original_url" in fields:
         link.original_url = original_url
     if "expires_at" in fields:

@@ -3,7 +3,13 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from backend.link_state import LinkState, derive_state
+from backend.link_state import (
+    LinkAlreadyDeletedError,
+    LinkNotFoundError,
+    LinkState,
+    derive_state,
+    ensure_patchable,
+)
 from backend.models import Link
 
 
@@ -71,6 +77,41 @@ class TestIsPatchable:
     def test_deleted_is_not_patchable(self):
         # ADR 0001: deleted is terminal.
         assert LinkState.DELETED.is_patchable is False
+
+
+class TestEnsurePatchable:
+    """ADR 0001 enforcement at the domain layer."""
+
+    def test_active_does_not_raise(self):
+        ensure_patchable(_link(), NOW)
+
+    def test_expired_does_not_raise(self):
+        # ADR 0001: expired is reversible via PATCH expires_at.
+        past = NOW - timedelta(days=1)
+        ensure_patchable(_link(expires_at=past), NOW)
+
+    def test_deleted_raises_link_already_deleted(self):
+        link = _link(deleted_at=NOW)
+        with pytest.raises(LinkAlreadyDeletedError) as exc:
+            ensure_patchable(link, NOW)
+        assert exc.value.token == "ABCDEFG"
+
+    def test_deleted_and_expired_still_raises(self):
+        # deleted takes precedence over expired in derivation; same here.
+        past = NOW - timedelta(days=1)
+        link = _link(deleted_at=NOW, expires_at=past)
+        with pytest.raises(LinkAlreadyDeletedError):
+            ensure_patchable(link, NOW)
+
+
+class TestTypedExceptions:
+    def test_link_not_found_carries_token(self):
+        err = LinkNotFoundError("ABCDEFG")
+        assert err.token == "ABCDEFG"
+
+    def test_link_already_deleted_carries_token(self):
+        err = LinkAlreadyDeletedError("XYZ1234")
+        assert err.token == "XYZ1234"
 
 
 class TestSerialization:

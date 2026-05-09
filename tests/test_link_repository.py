@@ -1,9 +1,9 @@
 from datetime import datetime, timedelta
 
 import pytest
-from fastapi import HTTPException
 
 from backend import link_repository
+from backend.link_state import LinkAlreadyDeletedError, LinkNotFoundError
 from backend.models import Link
 
 
@@ -11,7 +11,7 @@ NOW = datetime(2026, 5, 8, 12, 0, 0)
 SECRET = "unit-test-secret"
 
 
-class TestGetOr404:
+class TestGetLink:
     def test_returns_link_when_present(self, db_session):
         link = link_repository.create_link(
             db_session,
@@ -20,13 +20,13 @@ class TestGetOr404:
             expires_at=None,
             now=NOW,
         )
-        fetched = link_repository.get_or_404(db_session, link.token)
+        fetched = link_repository.get_link(db_session, link.token)
         assert fetched.token == link.token
 
-    def test_raises_404_when_absent(self, db_session):
-        with pytest.raises(HTTPException) as exc:
-            link_repository.get_or_404(db_session, "MISSING")
-        assert exc.value.status_code == 404
+    def test_raises_typed_error_when_absent(self, db_session):
+        with pytest.raises(LinkNotFoundError) as exc:
+            link_repository.get_link(db_session, "MISSING")
+        assert exc.value.token == "MISSING"
 
 
 class TestCreateLink:
@@ -133,6 +133,35 @@ class TestApplyPatch:
         )
         assert link.original_url == original_url
         assert link.updated_at == later
+
+    def test_refuses_to_patch_deleted_link(self, db_session):
+        # ADR 0001 enforced at the repository.
+        link = self._seed(db_session)
+        link_repository.mark_deleted(db_session, link, NOW)
+
+        with pytest.raises(LinkAlreadyDeletedError) as exc:
+            link_repository.apply_patch(
+                db_session,
+                link,
+                fields={"original_url"},
+                original_url="https://example.com/anything",
+                now=NOW + timedelta(hours=1),
+            )
+        assert exc.value.token == link.token
+
+    def test_patches_expired_link_for_reactivation(self, db_session):
+        # ADR 0001: expired is reversible.
+        past = NOW - timedelta(days=1)
+        link = self._seed(db_session, expires_at=past)
+        future = NOW + timedelta(days=30)
+        link_repository.apply_patch(
+            db_session,
+            link,
+            fields={"expires_at"},
+            expires_at=future,
+            now=NOW,
+        )
+        assert link.expires_at == future
 
 
 class TestMarkDeleted:

@@ -109,7 +109,7 @@ def create_qr(body: CreateRequest, db: Session = Depends(get_db)):
 
 @router.get("/qr/{token}/image")
 def qr_image(token: str, db: Session = Depends(get_db)):
-    link_repository.get_or_404(db, token)
+    link_repository.get_link(db, token)
     cfg = _config()
     short_url = f"{cfg['base_url']}/r/{token}"
     png_bytes = generate_qr_png(short_url)
@@ -118,7 +118,7 @@ def qr_image(token: str, db: Session = Depends(get_db)):
 
 @redirect_router.get("/r/{token}")
 def redirect(token: str, request: Request, db: Session = Depends(get_db)):
-    link = link_repository.get_or_404(db, token)
+    link = link_repository.get_link(db, token)
 
     state = derive_state(link, _now_utc())
     if not state.is_redirectable:
@@ -131,7 +131,7 @@ def redirect(token: str, request: Request, db: Session = Depends(get_db)):
 
 @router.get("/qr/{token}")
 def get_link_info(token: str, db: Session = Depends(get_db)):
-    link = link_repository.get_or_404(db, token)
+    link = link_repository.get_link(db, token)
     cfg = _config()
     state = derive_state(link, _now_utc())
     return _link_response(link, cfg["base_url"], state)
@@ -145,11 +145,8 @@ class PatchRequest(BaseModel):
 
 @router.patch("/qr/{token}")
 def patch_link(token: str, body: PatchRequest, db: Session = Depends(get_db)):
-    link = link_repository.get_or_404(db, token)
-
+    link = link_repository.get_link(db, token)
     now = _now_utc()
-    if not derive_state(link, now).is_patchable:
-        raise HTTPException(status_code=410, detail="Link is deleted")
 
     fields_to_update = body.model_fields_set & {"original_url", "expires_at"}
     if not fields_to_update:
@@ -184,14 +181,14 @@ def patch_link(token: str, body: PatchRequest, db: Session = Depends(get_db)):
 
 @router.delete("/qr/{token}")
 def delete_link(token: str, db: Session = Depends(get_db)):
-    link = link_repository.get_or_404(db, token)
+    link = link_repository.get_link(db, token)
     link_repository.mark_deleted(db, link, _now_utc())
     return {"token": token, "status": "deleted"}
 
 
 @router.get("/qr/{token}/analytics")
 def get_analytics(token: str, db: Session = Depends(get_db)):
-    link_repository.get_or_404(db, token)
+    link_repository.get_link(db, token)
     scans = scan_repository.scans_for_token(db, token)
     return {
         "token": token,
