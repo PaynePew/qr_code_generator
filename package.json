@@ -4,12 +4,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "sandcastle": "tsx .sandcastle/main.mts"
+    "sandcastle": "npx tsx .sandcastle/main.mts"
   },
   "devDependencies": {
     "@ai-hero/sandcastle": "^0.5.8",
-    "@types/node": "^25.6.2",
-    "tsx": "^4.21.0",
-    "typescript": "^6.0.3"
+    "@types/node": "^25.6.2"
   }
 }
