@@ -1,9 +1,14 @@
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
+import { Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { listTokens, type HistoryEntry } from '@/state/linkHistory'
-import { getLink, type GetLinkResponse } from '@/api/qr'
+import { getLink, patchLink, type GetLinkResponse } from '@/api/qr'
 import { linkKey } from '@/api/queryKeys'
 import type { ApiError } from '@/api/client'
+import { computeExpiresAt, toDatetimeLocalValue } from '@/lib/expiresAtPresets'
+import { getToastOptions } from '@/lib/toastOptions'
 import { CopyButton } from '@/components/ui/CopyButton'
 import { StatusBadge, type DerivedStatus } from '@/components/ui/StatusBadge'
 
@@ -37,6 +42,7 @@ function truncateUrl(url: string, max = 50): string {
 
 function LinkCard({ entry }: { entry: HistoryEntry }) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const query = useQuery<GetLinkResponse, ApiError>({
     queryKey: linkKey(entry.token),
     queryFn: () => getLink(entry.token),
@@ -49,6 +55,24 @@ function LinkCard({ entry }: { entry: HistoryEntry }) {
       : (query.data?.status ?? 'active')
 
   const shortUrl = query.data?.short_url ?? `…/r/${entry.token}`
+
+  const [showReactivate, setShowReactivate] = useState(false)
+  const [reactivateDate, setReactivateDate] = useState<string>(() =>
+    toDatetimeLocalValue(new Date(computeExpiresAt(new Date(), '+30d')!)),
+  )
+
+  const reactivateMutation = useMutation<GetLinkResponse, ApiError, string>({
+    mutationFn: (expires_at) => patchLink(entry.token, { expires_at }),
+    onSuccess(data) {
+      queryClient.setQueryData(linkKey(entry.token), data)
+      queryClient.invalidateQueries({ queryKey: ['link', entry.token] })
+      setShowReactivate(false)
+      toast.success('連結已重新啟用', getToastOptions('success'))
+    },
+    onError() {
+      toast.error('重新啟用失敗，請稍後再試。', getToastOptions('error'))
+    },
+  })
 
   function handleCardClick(e: React.MouseEvent) {
     if ((e.target as HTMLElement).closest('button')) return
@@ -88,6 +112,58 @@ function LinkCard({ entry }: { entry: HistoryEntry }) {
       <div className="text-xs text-muted-foreground" title={absoluteTime(entry.createdAt)}>
         建立於 {relativeTime(entry.createdAt)}
       </div>
+
+      {/* Reactivate button for expired cards */}
+      {status === 'expired' && !showReactivate && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); setShowReactivate(true) }}
+          className="self-start mt-1 rounded-md border border-amber-400 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100 transition-colors"
+        >
+          重新啟用
+        </button>
+      )}
+
+      {status === 'expired' && showReactivate && (
+        <div
+          className="flex flex-col gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 mt-1"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <label className="text-xs font-medium text-amber-800">選擇新的到期時間</label>
+          <input
+            type="datetime-local"
+            value={reactivateDate}
+            onChange={(e) => setReactivateDate(e.target.value)}
+            disabled={reactivateMutation.isPending}
+            className="rounded-md border border-amber-300 px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-amber-400/50 bg-white disabled:opacity-50"
+          />
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => reactivateMutation.mutate(new Date(reactivateDate).toISOString())}
+              disabled={reactivateMutation.isPending || !reactivateDate}
+              className="flex items-center gap-1 rounded-md bg-amber-500 px-3 py-1 text-xs font-medium text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
+            >
+              {reactivateMutation.isPending ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  啟用中…
+                </>
+              ) : (
+                '確認啟用'
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowReactivate(false)}
+              disabled={reactivateMutation.isPending}
+              className="rounded-md border border-amber-300 px-3 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition-colors"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

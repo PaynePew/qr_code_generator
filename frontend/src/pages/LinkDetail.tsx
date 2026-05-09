@@ -12,6 +12,7 @@ import { getStyle } from '@/state/styleStore'
 import { create as createRenderer, type QRRenderer } from '@/qr/renderer'
 import { markDeleted } from '@/state/linkHistory'
 import { getToastOptions } from '@/lib/toastOptions'
+import { computeExpiresAt, toDatetimeLocalValue, type ExpiresAtPreset } from '@/lib/expiresAtPresets'
 import { Button } from '@/components/ui/button'
 import { CopyButton } from '@/components/ui/CopyButton'
 import { StatusBadge, type DerivedStatus } from '@/components/ui/StatusBadge'
@@ -154,6 +155,140 @@ function EditUrlForm({
   )
 }
 
+function EditExpiresAtForm({
+  initialExpiresAt,
+  token,
+  onCancel,
+  onSuccess,
+}: {
+  initialExpiresAt: string | null
+  token: string
+  onCancel: () => void
+  onSuccess: () => void
+}) {
+  const queryClient = useQueryClient()
+
+  const [preset, setPreset] = useState<ExpiresAtPreset>(() =>
+    initialExpiresAt === null ? 'never' : 'custom',
+  )
+  const [customValue, setCustomValue] = useState<string>(() => {
+    if (initialExpiresAt) return toDatetimeLocalValue(new Date(initialExpiresAt))
+    return toDatetimeLocalValue(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
+  })
+
+  function getExpiresAt(): string | null {
+    if (preset === 'never') return null
+    if (preset === 'custom') return customValue ? new Date(customValue).toISOString() : null
+    return computeExpiresAt(new Date(), preset)
+  }
+
+  function handlePresetClick(p: ExpiresAtPreset) {
+    setPreset(p)
+    if (p !== 'never' && p !== 'custom') {
+      const iso = computeExpiresAt(new Date(), p)!
+      setCustomValue(toDatetimeLocalValue(new Date(iso)))
+    }
+  }
+
+  const mutation = useMutation<GetLinkResponse, ApiError, string | null>({
+    mutationFn: (expires_at) => patchLink(token, { expires_at }),
+    onSuccess(data) {
+      queryClient.setQueryData(linkKey(token), data)
+      queryClient.invalidateQueries({ queryKey: ['link'] })
+      toast.success('到期時間已更新', getToastOptions('success'))
+      onSuccess()
+    },
+    onError() {
+      toast.error('更新失敗，請稍後再試。', getToastOptions('error'))
+    },
+  })
+
+  const PRESET_LABELS: Record<string, string> = {
+    '+7d': '+7 天',
+    '+30d': '+30 天',
+    '+90d': '+90 天',
+    never: '永不過期',
+    custom: '自訂時間',
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap gap-2">
+        {(['+7d', '+30d', '+90d', 'never'] as const).map((p) => (
+          <button
+            key={p}
+            type="button"
+            onClick={() => handlePresetClick(p)}
+            disabled={mutation.isPending}
+            className={[
+              'rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50',
+              preset === p
+                ? 'border-primary bg-primary text-primary-foreground'
+                : 'border-input bg-background hover:border-primary/60',
+            ].join(' ')}
+          >
+            {PRESET_LABELS[p]}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => setPreset('custom')}
+          disabled={mutation.isPending}
+          className={[
+            'rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50',
+            preset === 'custom'
+              ? 'border-primary bg-primary text-primary-foreground'
+              : 'border-input bg-background hover:border-primary/60',
+          ].join(' ')}
+        >
+          {PRESET_LABELS['custom']}
+        </button>
+      </div>
+
+      {preset !== 'never' && (
+        <input
+          type="datetime-local"
+          value={customValue}
+          onChange={(e) => {
+            setCustomValue(e.target.value)
+            setPreset('custom')
+          }}
+          disabled={mutation.isPending}
+          className="rounded-md border border-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50 bg-background disabled:opacity-50"
+        />
+      )}
+
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => mutation.mutate(getExpiresAt())}
+          disabled={mutation.isPending}
+          className={mutation.isPending ? 'grayscale' : ''}
+        >
+          {mutation.isPending ? (
+            <>
+              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+              儲存中…
+            </>
+          ) : (
+            '儲存'
+          )}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onCancel}
+          disabled={mutation.isPending}
+        >
+          取消
+        </Button>
+      </div>
+    </div>
+  )
+}
+
 export function LinkDetail() {
   const { token } = useParams<{ token: string }>()
   const navigate = useNavigate()
@@ -161,6 +296,7 @@ export function LinkDetail() {
   const qrContainerRef = useRef<HTMLDivElement>(null)
   const rendererRef = useRef<QRRenderer | null>(null)
   const [isEditing, setIsEditing] = useState(false)
+  const [isEditingExpiry, setIsEditingExpiry] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [isDeleted, setIsDeleted] = useState(false)
 
@@ -324,10 +460,33 @@ export function LinkDetail() {
                 <span className="block text-xs text-muted-foreground">更新時間</span>
                 <span className="font-medium">{absoluteTime(query.data.updated_at)}</span>
               </div>
-              <div>
-                <span className="block text-xs text-muted-foreground">到期時間</span>
-                <span className="font-medium">{absoluteTime(query.data.expires_at)}</span>
+            </div>
+
+            {/* expires_at — always visible, editable */}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">到期時間</span>
+                {!isEditingExpiry && status !== 'deleted' && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingExpiry(true)}
+                    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    編輯
+                  </button>
+                )}
               </div>
+              {isEditingExpiry ? (
+                <EditExpiresAtForm
+                  initialExpiresAt={query.data.expires_at}
+                  token={token}
+                  onCancel={() => setIsEditingExpiry(false)}
+                  onSuccess={() => setIsEditingExpiry(false)}
+                />
+              ) : (
+                <span className="text-sm font-medium">{absoluteTime(query.data.expires_at)}</span>
+              )}
             </div>
           </div>
 

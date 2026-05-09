@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useForm } from '@tanstack/react-form'
 import { useMutation } from '@tanstack/react-query'
 import { useDropzone, type FileRejection } from 'react-dropzone'
-import { Loader2, CheckCircle2, Upload, X } from 'lucide-react'
+import { Loader2, CheckCircle2, Upload, X, ChevronDown, ChevronRight } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import confetti from 'canvas-confetti'
 import { toast } from 'sonner'
@@ -26,6 +26,11 @@ import {
 import { applyEclPolicy } from '@/qr/eclPolicy'
 import { useMotionPreference } from '@/lib/motionPreference'
 import { getToastOptions } from '@/lib/toastOptions'
+import {
+  computeExpiresAt,
+  toDatetimeLocalValue,
+  type ExpiresAtPreset,
+} from '@/lib/expiresAtPresets'
 
 const BASE_URL = import.meta.env.VITE_BASE_URL ?? window.location.origin
 
@@ -108,6 +113,28 @@ export function Generator() {
   const [logoObjectUrl, setLogoObjectUrl] = useState<string | null>(null)
   const [logoScale, setLogoScale] = useState(0.2)
   const [logoError, setLogoError] = useState<string | null>(null)
+
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  const [expiresPreset, setExpiresPreset] = useState<ExpiresAtPreset>('never')
+  const [customExpiresAt, setCustomExpiresAt] = useState<string>(() =>
+    toDatetimeLocalValue(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
+  )
+
+  function getExpiresAtForApi(): string | null {
+    if (expiresPreset === 'never') return null
+    if (expiresPreset === 'custom') {
+      return customExpiresAt ? new Date(customExpiresAt).toISOString() : null
+    }
+    return computeExpiresAt(new Date(), expiresPreset)
+  }
+
+  function handlePresetClick(preset: ExpiresAtPreset) {
+    setExpiresPreset(preset)
+    if (preset !== 'never' && preset !== 'custom') {
+      const iso = computeExpiresAt(new Date(), preset)!
+      setCustomExpiresAt(toDatetimeLocalValue(new Date(iso)))
+    }
+  }
 
   function revokeLogo() {
     if (logoObjectUrlRef.current) {
@@ -234,7 +261,7 @@ export function Generator() {
   const form = useForm({
     defaultValues: { url: '' },
     onSubmit({ value }) {
-      mutation.mutate({ url: value.url })
+      mutation.mutate({ url: value.url, expires_at: getExpiresAtForApi() })
     },
   })
 
@@ -258,6 +285,8 @@ export function Generator() {
     rendererRef.current = null
     const defaultStyle = getDefault()
     setStyle(defaultStyle)
+    setExpiresPreset('never')
+    setCustomExpiresAt(toDatetimeLocalValue(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)))
     form.reset()
     mutation.reset()
   }
@@ -365,6 +394,93 @@ export function Generator() {
             )
           }}
         </form.Field>
+
+        {/* Advanced settings (expiry) */}
+        <div className="rounded-lg border border-border">
+          <button
+            type="button"
+            onClick={() => setAdvancedOpen((o) => !o)}
+            className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium hover:bg-muted/40 transition-colors"
+          >
+            <span>進階設定</span>
+            {advancedOpen ? (
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            )}
+          </button>
+
+          {advancedOpen && (
+            <div className="border-t border-border px-4 py-4 flex flex-col gap-3">
+              <div>
+                <span className="text-sm font-medium">到期設定</span>
+                <p className="text-xs text-muted-foreground mt-0.5">預設為永不過期。</p>
+              </div>
+
+              {/* Preset chips */}
+              <div className="flex flex-wrap gap-2">
+                {(['+7d', '+30d', '+90d', 'never'] as const).map((preset) => {
+                  const labels: Record<string, string> = {
+                    '+7d': '+7 天',
+                    '+30d': '+30 天',
+                    '+90d': '+90 天',
+                    never: '永不過期',
+                  }
+                  const active = expiresPreset === preset
+                  return (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => handlePresetClick(preset)}
+                      disabled={mutation.isPending}
+                      className={[
+                        'rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50',
+                        active
+                          ? 'border-primary bg-primary text-primary-foreground'
+                          : 'border-input bg-background hover:border-primary/60',
+                      ].join(' ')}
+                    >
+                      {labels[preset]}
+                    </button>
+                  )
+                })}
+                <button
+                  type="button"
+                  onClick={() => setExpiresPreset('custom')}
+                  disabled={mutation.isPending}
+                  className={[
+                    'rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50',
+                    expiresPreset === 'custom'
+                      ? 'border-primary bg-primary text-primary-foreground'
+                      : 'border-input bg-background hover:border-primary/60',
+                  ].join(' ')}
+                >
+                  自訂時間
+                </button>
+              </div>
+
+              {/* Custom datetime picker */}
+              {expiresPreset !== 'never' && (
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="expires-at-input" className="text-xs text-muted-foreground">
+                    到期日期與時間（本地時間）
+                  </label>
+                  <input
+                    id="expires-at-input"
+                    type="datetime-local"
+                    value={customExpiresAt}
+                    onChange={(e) => {
+                      setCustomExpiresAt(e.target.value)
+                      setExpiresPreset('custom')
+                    }}
+                    disabled={mutation.isPending}
+                    className="rounded-md border border-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50 bg-background disabled:opacity-50"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
         <Button
           type="submit"
