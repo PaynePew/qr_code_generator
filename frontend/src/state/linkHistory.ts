@@ -2,7 +2,7 @@ export type HistoryEntry = {
   token: string
   originalUrl: string
   createdAt: string // ISO 8601
-  dismissed: boolean // for Slice 11 soft-remove
+  dismissed: boolean
 }
 
 type StoredData = {

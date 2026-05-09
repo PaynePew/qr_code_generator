@@ -8,26 +8,27 @@ import type { ApiError } from '@/api/client'
 
 type DerivedStatus = LinkStatus | 'missing'
 
-function relativeTime(isoDate: string): string {
-  const rtf = new Intl.RelativeTimeFormat('zh-TW', { numeric: 'auto' })
-  const diff = new Date(isoDate).getTime() - Date.now()
-  const absDiff = Math.abs(diff)
-  const sign = diff < 0 ? -1 : 1
+const rtf = new Intl.RelativeTimeFormat('zh-TW', { numeric: 'auto' })
+const dtf = new Intl.DateTimeFormat('zh-TW', {
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+})
 
-  if (absDiff < 60_000) return rtf.format(sign * Math.round(absDiff / 1_000), 'second')
-  if (absDiff < 3_600_000) return rtf.format(sign * Math.round(absDiff / 60_000), 'minute')
-  if (absDiff < 86_400_000) return rtf.format(sign * Math.round(absDiff / 3_600_000), 'hour')
-  return rtf.format(sign * Math.round(absDiff / 86_400_000), 'day')
+function relativeTime(isoDate: string): string {
+  const diffMs = new Date(isoDate).getTime() - Date.now()
+  const abs = Math.abs(diffMs)
+
+  if (abs < 60_000) return rtf.format(Math.round(diffMs / 1_000), 'second')
+  if (abs < 3_600_000) return rtf.format(Math.round(diffMs / 60_000), 'minute')
+  if (abs < 86_400_000) return rtf.format(Math.round(diffMs / 3_600_000), 'hour')
+  return rtf.format(Math.round(diffMs / 86_400_000), 'day')
 }
 
 function absoluteTime(isoDate: string): string {
-  return new Intl.DateTimeFormat('zh-TW', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(isoDate))
+  return dtf.format(new Date(isoDate))
 }
 
 function truncateUrl(url: string, max = 50): string {
@@ -87,7 +88,7 @@ function LinkCard({ entry }: { entry: HistoryEntry }) {
   })
 
   const status: DerivedStatus =
-    query.isError && (query.error as ApiError).status === 404
+    query.isError && query.error.status === 404
       ? 'missing'
       : (query.data?.status ?? 'active')
 
