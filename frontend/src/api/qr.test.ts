@@ -17,18 +17,19 @@ beforeEach(() => {
 })
 
 describe('getLink', () => {
+  const mockLink = {
+    token: 'abc1234',
+    original_url: 'https://example.com',
+    short_url: 'https://s.example.com/r/abc1234',
+    qr_code_url: '',
+    status: 'active' as const,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+    expires_at: null,
+  }
+
   it('sends GET /qr/{token}', async () => {
-    const mockData = {
-      token: 'abc1234',
-      original_url: 'https://example.com',
-      short_url: 'https://s.example.com/r/abc1234',
-      qr_code_url: '',
-      status: 'active' as const,
-      created_at: '2026-01-01T00:00:00Z',
-      updated_at: '2026-01-01T00:00:00Z',
-      expires_at: null,
-    }
-    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: mockData })
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: mockLink })
 
     await getLink('abc1234')
 
@@ -36,21 +37,11 @@ describe('getLink', () => {
   })
 
   it('returns the full link response', async () => {
-    const mockData = {
-      token: 'abc1234',
-      original_url: 'https://example.com',
-      short_url: 'https://s.example.com/r/abc1234',
-      qr_code_url: '',
-      status: 'active' as const,
-      created_at: '2026-01-01T00:00:00Z',
-      updated_at: '2026-01-01T00:00:00Z',
-      expires_at: null,
-    }
-    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: mockData })
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: mockLink })
 
     const result = await getLink('abc1234')
 
-    expect(result).toEqual(mockData)
+    expect(result).toEqual(mockLink)
   })
 
   it('propagates rejection from the client (e.g. 404)', async () => {

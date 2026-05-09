@@ -113,13 +113,16 @@ function LinkCard({
     retry: (_count, error) => error.status !== 404,
   })
 
-  const status: DerivedStatus =
-    query.isError && query.error.status === 404
-      ? 'missing'
-      : (query.data?.status ?? (entry.dismissed ? 'deleted' : 'active'))
+  let status: DerivedStatus = 'active'
+  if (query.isError && query.error.status === 404) {
+    status = 'missing'
+  } else if (query.data) {
+    status = query.data.status
+  } else if (entry.dismissed) {
+    status = 'deleted'
+  }
 
-  // Hide deleted cards when toggle is on; use entry.dismissed as fast-path
-  // and also catch API-reported deleted when dismissed flag is stale
+  // Catches API-reported deleted even when local dismissed flag is stale
   if (hideDeleted && status === 'deleted') return null
 
   const shortUrl = query.data?.short_url ?? `…/r/${entry.token}`
@@ -195,8 +198,7 @@ export function Dashboard() {
     refreshEntries()
   }
 
-  // Pre-filter using the local `dismissed` flag as a fast proxy for deleted status.
-  // Cards where API independently reports deleted are handled inside LinkCard itself.
+  // Fast-path filter by local dismissed flag; LinkCard handles API-reported deleted
   const visibleEntries = hideDeleted ? entries.filter((e) => !e.dismissed) : entries
   const showEmpty = visibleEntries.length === 0
 
