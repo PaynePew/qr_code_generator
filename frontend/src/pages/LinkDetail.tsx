@@ -19,6 +19,7 @@ import { getLink, patchLink, deleteLink, getAnalytics, type GetLinkResponse, typ
 import { linkKey, analyticsKey } from '@/api/queryKeys'
 import type { ApiError } from '@/api/client'
 import { urlSchema } from '@/schemas/url'
+import { cn } from '@/lib/utils'
 import { getStyle } from '@/state/styleStore'
 import { create as createRenderer, type QRRenderer } from '@/qr/renderer'
 import { markDeleted } from '@/state/linkHistory'
@@ -49,6 +50,12 @@ function relativeTime(isoDate: string): string {
 }
 
 type ChartFilter = 'all' | '302' | '410'
+
+const CHART_LINE_CONFIG: Record<ChartFilter, { dataKey: string; stroke: string; name: string }> = {
+  all: { dataKey: 'all', stroke: '#22c55e', name: '全部' },
+  '302': { dataKey: '302', stroke: '#22c55e', name: '302' },
+  '410': { dataKey: '410', stroke: '#ef4444', name: '410' },
+}
 
 interface ChartPoint {
   date: string
@@ -108,11 +115,8 @@ function todayScans(analytics: AnalyticsResponse): number {
 function successRate(analytics: AnalyticsResponse): string {
   const total = analytics.total_scans
   if (total === 0) return '—'
-  const success = analytics.recent_scans.length > 0
-    ? analytics.scans_by_day.reduce((acc, d) => acc + (d.status_codes['302'] ?? 0), 0)
-    : 0
-  const pct = Math.round((success / total) * 100)
-  return `${pct}%`
+  const success = analytics.scans_by_day.reduce((acc, d) => acc + (d.status_codes['302'] ?? 0), 0)
+  return `${Math.round((success / total) * 100)}%`
 }
 
 function AnalyticsSection({ token }: { token: string }) {
@@ -180,12 +184,12 @@ function AnalyticsSection({ token }: { token: string }) {
                 key={f}
                 type="button"
                 onClick={() => setFilter(f)}
-                className={[
+                className={cn(
                   'px-2 py-1 rounded text-xs font-medium transition-colors',
                   filter === f
                     ? 'bg-primary text-primary-foreground'
                     : 'border border-input hover:bg-muted',
-                ].join(' ')}
+                )}
               >
                 {f === 'all' ? '全部' : f}
               </button>
@@ -209,26 +213,14 @@ function AnalyticsSection({ token }: { token: string }) {
                 name === 'all' ? '全部' : name,
               ]}
             />
-            {(filter === 'all' || filter === '302') && (
-              <Line
-                type="monotone"
-                dataKey={filter === '302' ? '302' : 'all'}
-                stroke="#22c55e"
-                dot={false}
-                strokeWidth={2}
-                name={filter === '302' ? '302' : '全部'}
-              />
-            )}
-            {filter === '410' && (
-              <Line
-                type="monotone"
-                dataKey="410"
-                stroke="#ef4444"
-                dot={false}
-                strokeWidth={2}
-                name="410"
-              />
-            )}
+            <Line
+              type="monotone"
+              dataKey={CHART_LINE_CONFIG[filter].dataKey}
+              stroke={CHART_LINE_CONFIG[filter].stroke}
+              dot={false}
+              strokeWidth={2}
+              name={CHART_LINE_CONFIG[filter].name}
+            />
             {filter === 'all' && (
               <Legend
                 formatter={(value) => (value === 'all' ? '全部' : value)}
@@ -262,10 +254,10 @@ function AnalyticsSection({ token }: { token: string }) {
                   </td>
                   <td className="px-4 py-2">
                     <span
-                      className={[
+                      className={cn(
                         'inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium',
                         statusBadgeClass(scan.status_code),
-                      ].join(' ')}
+                      )}
                     >
                       {scan.status_code}
                     </span>
