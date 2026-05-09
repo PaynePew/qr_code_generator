@@ -6,6 +6,7 @@ import { Loader2, CheckCircle2, Upload, X, ChevronDown, ChevronRight } from 'luc
 import { motion, AnimatePresence } from 'framer-motion'
 import confetti from 'canvas-confetti'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { DownloadSplitButton } from '@/components/ui/DownloadSplitButton'
 import { ColorPickerField } from '@/components/ui/ColorPickerField'
@@ -328,11 +329,11 @@ export function Generator() {
           {/* Mobile: sticky with scroll-based shrink */}
           <div className="sticky top-0 z-10 bg-background pb-2 lg:static lg:z-auto lg:pb-0">
             <div
-              className={[
+              className={cn(
                 'flex items-center justify-center rounded-lg border bg-white overflow-hidden',
                 'transition-all duration-200',
                 shortUrl ? 'border-border' : 'border-dashed border-muted-foreground/30',
-              ].join(' ')}
+              )}
               style={{ minHeight: `${previewHeight}px` }}
             >
               {shortUrl ? (

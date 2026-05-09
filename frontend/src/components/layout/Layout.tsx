@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
+import { cn } from '@/lib/utils'
 import { Header } from './Header'
 import { Sidebar } from './Sidebar'
 
@@ -8,10 +9,10 @@ export function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false)
 
   function handleToggleSidebar() {
-    if (window.innerWidth < 768) {
-      setMobileOpen((prev) => !prev)
-    } else {
+    if (window.matchMedia('(min-width: 768px)').matches) {
       setDesktopOpen((prev) => !prev)
+    } else {
+      setMobileOpen((prev) => !prev)
     }
   }
 
@@ -19,12 +20,12 @@ export function Layout() {
     <div className="flex flex-col h-screen">
       <Header onToggleSidebar={handleToggleSidebar} />
       <div className="flex flex-1 overflow-hidden relative">
-        {/* Mobile backdrop */}
         <div
-          className={[
+          className={cn(
             'fixed inset-0 bg-black/40 z-40 md:hidden transition-opacity duration-200',
             mobileOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none',
-          ].join(' ')}
+          )}
+          aria-hidden="true"
           onClick={() => setMobileOpen(false)}
         />
 
