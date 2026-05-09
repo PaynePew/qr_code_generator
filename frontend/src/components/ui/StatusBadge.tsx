@@ -1,6 +1,5 @@
-import type { LinkStatus } from '@/api/qr'
-
-export type DerivedStatus = LinkStatus | 'missing'
+export type { DerivedStatus } from '@/state/linkEntry/types'
+import type { DerivedStatus } from '@/state/linkEntry/types'
 
 const STATUS_LABEL: Record<DerivedStatus, string> = {
   active: '使用中',

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useForm } from '@tanstack/react-form'
-import { useMutation } from '@tanstack/react-query'
 import { useDropzone, type FileRejection } from 'react-dropzone'
 import { Loader2, CheckCircle2, Upload, X, ChevronDown, ChevronRight } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -11,10 +10,9 @@ import { Button } from '@/components/ui/button'
 import { DownloadSplitButton } from '@/components/ui/DownloadSplitButton'
 import { ColorPickerField } from '@/components/ui/ColorPickerField'
 import { urlSchema, URL_MAX_LENGTH } from '@/schemas/url'
-import { createQr } from '@/api/qr'
 import { create as createRenderer, type QRRenderer, type RendererOptions } from '@/qr/renderer'
 import type { ApiError } from '@/api/client'
-import { addToken } from '@/state/linkHistory'
+import { useCreateEntry } from '@/state/linkEntry'
 import {
   getDefault,
   setDefault,
@@ -237,14 +235,9 @@ export function Generator() {
     multiple: false,
   })
 
-  const mutation = useMutation({
-    mutationFn: createQr,
-    onSuccess(data) {
-      addToken({
-        token: data.token,
-        originalUrl: data.original_url,
-        createdAt: new Date().toISOString(),
-      })
+  const mutation = useCreateEntry()
+
+  const onCreateSuccess = (data: { token: string; original_url: string }) => {
       const qrUrl = `${BASE_URL}/r/${data.token}`
       setShortUrl(qrUrl)
       setCurrentToken(data.token)
@@ -262,14 +255,13 @@ export function Generator() {
       if (!prefersReducedMotion) {
         confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 } })
       }
-    },
-    onError(err) {
-      const apiErr = err as unknown as ApiError
-      if (apiErr.isNetwork || apiErr.status !== 422) {
-        toast.error('網路錯誤，請稍後再試。', getToastOptions('error'))
-      }
-    },
-  })
+  }
+
+  const onCreateError = (err: ApiError) => {
+    if (err.isNetwork || err.status !== 422) {
+      toast.error('網路錯誤，請稍後再試。', getToastOptions('error'))
+    }
+  }
 
   useEffect(() => {
     if (currentToken) {
@@ -281,7 +273,10 @@ export function Generator() {
   const form = useForm({
     defaultValues: { url: '' },
     onSubmit({ value }) {
-      mutation.mutate({ url: value.url, expires_at: resolveExpiresAt(expiresPreset, customExpiresAt) })
+      mutation.mutate(
+        { url: value.url, expires_at: resolveExpiresAt(expiresPreset, customExpiresAt) },
+        { onSuccess: onCreateSuccess, onError: onCreateError },
+      )
     },
   })
 

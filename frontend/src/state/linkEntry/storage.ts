@@ -1,9 +1,4 @@
-export type HistoryEntry = {
-  token: string
-  originalUrl: string
-  createdAt: string // ISO 8601
-  dismissed: boolean
-}
+import type { HistoryEntry } from './types'
 
 type StoredData = {
   version: number
@@ -52,7 +47,7 @@ export function listTokens(storage: Storage = localStorage): HistoryEntry[] {
   )
 }
 
-export function markDeleted(token: string, storage: Storage = localStorage): void {
+export function markDismissed(token: string, storage: Storage = localStorage): void {
   const entries = load(storage)
   const idx = entries.findIndex((e) => e.token === token)
   if (idx === -1) return
@@ -64,3 +59,5 @@ export function removeFromHistory(token: string, storage: Storage = localStorage
   const entries = load(storage).filter((e) => e.token !== token)
   save(entries, storage)
 }
+
+export { STORAGE_KEY }

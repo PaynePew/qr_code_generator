@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useForm } from '@tanstack/react-form'
 import { toast } from 'sonner'
 import { ArrowLeft, Loader2, Trash2, Pencil } from 'lucide-react'
@@ -15,19 +15,19 @@ import {
   Legend,
 } from 'recharts'
 import { format, subDays, parseISO } from 'date-fns'
-import { getLink, patchLink, deleteLink, getAnalytics, type GetLinkResponse, type AnalyticsResponse } from '@/api/qr'
-import { linkKey, analyticsKey } from '@/api/queryKeys'
+import { getAnalytics, type AnalyticsResponse } from '@/api/qr'
+import { analyticsKey } from '@/api/queryKeys'
 import type { ApiError } from '@/api/client'
 import { urlSchema } from '@/schemas/url'
 import { cn } from '@/lib/utils'
 import { getStyle } from '@/state/styleStore'
 import { create as createRenderer, type QRRenderer } from '@/qr/renderer'
-import { markDeleted } from '@/state/linkHistory'
+import { useLinkEntry, type DerivedEntry } from '@/state/linkEntry'
 import { getToastOptions } from '@/lib/toastOptions'
 import { computeExpiresAt, resolveExpiresAt, toDatetimeLocalValue, PRESET_LABELS, type ExpiresAtPreset } from '@/lib/expiresAtPresets'
 import { Button } from '@/components/ui/button'
 import { CopyButton } from '@/components/ui/CopyButton'
-import { StatusBadge, type DerivedStatus } from '@/components/ui/StatusBadge'
+import { StatusBadge } from '@/components/ui/StatusBadge'
 import { parse as parseUA } from '@/lib/uaParser'
 
 const BASE_URL = import.meta.env.VITE_BASE_URL ?? window.location.origin
@@ -289,40 +289,33 @@ function validateUrl(value: string): string | undefined {
 
 function EditUrlForm({
   initialUrl,
-  token,
+  entry,
   onCancel,
   onSuccess,
 }: {
   initialUrl: string
-  token: string
+  entry: DerivedEntry
   onCancel: () => void
   onSuccess: () => void
 }) {
-  const queryClient = useQueryClient()
-
-  const mutation = useMutation<GetLinkResponse, ApiError, string>({
-    mutationFn: (url: string) => patchLink(token, { original_url: url }),
-    onSuccess(data) {
-      queryClient.setQueryData(linkKey(token), data)
-      queryClient.invalidateQueries({ queryKey: ['link'] })
-      toast.success('網址已更新', getToastOptions('success'))
-      onSuccess()
-    },
-    onError(err) {
-      if (err.status !== 422) {
-        toast.error('更新失敗，請稍後再試。', getToastOptions('error'))
+  const form = useForm({
+    defaultValues: { url: initialUrl },
+    async onSubmit({ value }) {
+      try {
+        await entry.updateUrl(value.url.trim())
+        toast.success('網址已更新', getToastOptions('success'))
+        onSuccess()
+      } catch (err) {
+        const apiErr = err as ApiError
+        if (apiErr.status !== 422) {
+          toast.error('更新失敗，請稍後再試。', getToastOptions('error'))
+        }
       }
     },
   })
 
-  const form = useForm({
-    defaultValues: { url: initialUrl },
-    onSubmit({ value }) {
-      mutation.mutate(value.url.trim())
-    },
-  })
-
-  const apiError = mutation.error
+  const apiError = entry.updateUrl.error
+  const isPending = entry.updateUrl.isPending
 
   return (
     <form
@@ -345,7 +338,7 @@ function EditUrlForm({
           const inlineError =
             field.state.meta.isTouched && field.state.meta.errors.length > 0
               ? String(field.state.meta.errors[0])
-              : mutation.isError && apiError?.status === 422
+              : apiError?.status === 422
                 ? apiError.detail
                 : null
 
@@ -363,7 +356,7 @@ function EditUrlForm({
                 value={field.state.value}
                 onChange={(e) => field.handleChange(e.target.value)}
                 onBlur={field.handleBlur}
-                disabled={mutation.isPending}
+                disabled={isPending}
                 autoFocus
               />
               {inlineError && (
@@ -378,10 +371,10 @@ function EditUrlForm({
         <Button
           type="submit"
           size="sm"
-          disabled={mutation.isPending}
-          className={mutation.isPending ? 'grayscale' : ''}
+          disabled={isPending}
+          className={isPending ? 'grayscale' : ''}
         >
-          {mutation.isPending ? (
+          {isPending ? (
             <>
               <Loader2 className="mr-1 h-3 w-3 animate-spin" />
               儲存中…
@@ -395,7 +388,7 @@ function EditUrlForm({
           variant="outline"
           size="sm"
           onClick={onCancel}
-          disabled={mutation.isPending}
+          disabled={isPending}
         >
           取消
         </Button>
@@ -406,17 +399,15 @@ function EditUrlForm({
 
 function EditExpiresAtForm({
   initialExpiresAt,
-  token,
+  entry,
   onCancel,
   onSuccess,
 }: {
   initialExpiresAt: string | null
-  token: string
+  entry: DerivedEntry
   onCancel: () => void
   onSuccess: () => void
 }) {
-  const queryClient = useQueryClient()
-
   const [preset, setPreset] = useState<ExpiresAtPreset>(() =>
     initialExpiresAt === null ? 'never' : 'custom',
   )
@@ -433,18 +424,17 @@ function EditExpiresAtForm({
     }
   }
 
-  const mutation = useMutation<GetLinkResponse, ApiError, string | null>({
-    mutationFn: (expires_at) => patchLink(token, { expires_at }),
-    onSuccess(data) {
-      queryClient.setQueryData(linkKey(token), data)
-      queryClient.invalidateQueries({ queryKey: ['link'] })
+  async function handleSave() {
+    try {
+      await entry.updateExpiry(resolveExpiresAt(preset, customValue))
       toast.success('到期時間已更新', getToastOptions('success'))
       onSuccess()
-    },
-    onError() {
+    } catch {
       toast.error('更新失敗，請稍後再試。', getToastOptions('error'))
-    },
-  })
+    }
+  }
+
+  const isPending = entry.updateExpiry.isPending
 
   return (
     <div className="flex flex-col gap-3">
@@ -454,7 +444,7 @@ function EditExpiresAtForm({
             key={p}
             type="button"
             onClick={() => handlePresetClick(p)}
-            disabled={mutation.isPending}
+            disabled={isPending}
             className={[
               'rounded-full border px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50',
               preset === p
@@ -475,7 +465,7 @@ function EditExpiresAtForm({
             setCustomValue(e.target.value)
             setPreset('custom')
           }}
-          disabled={mutation.isPending}
+          disabled={isPending}
           className="rounded-md border border-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50 bg-background disabled:opacity-50"
         />
       )}
@@ -484,11 +474,11 @@ function EditExpiresAtForm({
         <Button
           type="button"
           size="sm"
-          onClick={() => mutation.mutate(resolveExpiresAt(preset, customValue))}
-          disabled={mutation.isPending}
-          className={mutation.isPending ? 'grayscale' : ''}
+          onClick={handleSave}
+          disabled={isPending}
+          className={isPending ? 'grayscale' : ''}
         >
-          {mutation.isPending ? (
+          {isPending ? (
             <>
               <Loader2 className="mr-1 h-3 w-3 animate-spin" />
               儲存中…
@@ -502,7 +492,7 @@ function EditExpiresAtForm({
           variant="outline"
           size="sm"
           onClick={onCancel}
-          disabled={mutation.isPending}
+          disabled={isPending}
         >
           取消
         </Button>
@@ -514,31 +504,18 @@ function EditExpiresAtForm({
 export function LinkDetail() {
   const { token } = useParams<{ token: string }>()
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
   const qrContainerRef = useRef<HTMLDivElement>(null)
   const rendererRef = useRef<QRRenderer | null>(null)
   const [isEditing, setIsEditing] = useState(false)
   const [isEditingExpiry, setIsEditingExpiry] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [isDeleted, setIsDeleted] = useState(false)
 
-  const query = useQuery<GetLinkResponse, ApiError>({
-    queryKey: linkKey(token!),
-    queryFn: () => getLink(token!),
-    retry: (_count, error) => error.status !== 404,
-    enabled: !!token,
-  })
-
-  const status: DerivedStatus = isDeleted
-    ? 'deleted'
-    : query.isError && query.error.status === 404
-      ? 'missing'
-      : (query.data?.status ?? 'active')
+  const entry = useLinkEntry(token ?? '')
 
   const shortUrl = token ? `${BASE_URL}/r/${token}` : null
 
   useEffect(() => {
-    if (!query.data || !qrContainerRef.current) return
+    if (!entry.link || !qrContainerRef.current) return
 
     rendererRef.current?.destroy()
     const style = getStyle(token!)
@@ -554,7 +531,7 @@ export function LinkDetail() {
     })
     renderer.attachTo(qrContainerRef.current)
     rendererRef.current = renderer
-  }, [query.data, shortUrl, token])
+  }, [entry.link, shortUrl, token])
 
   useEffect(() => {
     return () => {
@@ -562,19 +539,15 @@ export function LinkDetail() {
     }
   }, [])
 
-  const deleteMutation = useMutation<void, ApiError>({
-    mutationFn: () => deleteLink(token!),
-    onSuccess() {
-      markDeleted(token!)
-      setIsDeleted(true)
+  async function handleDelete() {
+    try {
+      await entry.markDeleted()
       setShowDeleteConfirm(false)
-      queryClient.invalidateQueries({ queryKey: ['link'] })
       toast.success('連結已刪除', getToastOptions('success'))
-    },
-    onError() {
+    } catch {
       toast.error('刪除失敗，請稍後再試。', getToastOptions('error'))
-    },
-  })
+    }
+  }
 
   if (!token) {
     return (
@@ -604,35 +577,35 @@ export function LinkDetail() {
 
       <div className="flex items-center gap-2 flex-wrap">
         <h1 className="text-2xl font-bold font-mono">{token}</h1>
-        {query.isLoading ? (
+        {entry.isLoading ? (
           <span className="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground animate-pulse">
             載入中
           </span>
         ) : (
-          <StatusBadge status={status} />
+          <StatusBadge status={entry.status} />
         )}
       </div>
 
-      {query.isLoading && (
+      {entry.isLoading && (
         <div className="flex items-center gap-2 text-muted-foreground text-sm">
           <Loader2 className="h-4 w-4 animate-spin" />
           載入連結資訊…
         </div>
       )}
 
-      {query.isError && status === 'missing' && (
+      {entry.queryError && entry.status === 'missing' && (
         <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
           找不到此連結。它可能已從系統中移除。
         </div>
       )}
 
-      {query.isError && status !== 'missing' && (
+      {entry.queryError && entry.status !== 'missing' && (
         <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
           載入連結資訊時發生錯誤，請稍後再試。
         </div>
       )}
 
-      {query.data && (
+      {entry.link && (
         <>
           <div className="rounded-lg border bg-card p-5 flex flex-col gap-4">
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
@@ -642,7 +615,7 @@ export function LinkDetail() {
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">目標網址</span>
-                {!isEditing && status !== 'deleted' && (
+                {!isEditing && entry.status !== 'deleted' && (
                   <button
                     type="button"
                     onClick={() => setIsEditing(true)}
@@ -655,13 +628,13 @@ export function LinkDetail() {
               </div>
               {isEditing ? (
                 <EditUrlForm
-                  initialUrl={query.data.original_url}
-                  token={token}
+                  initialUrl={entry.link.original_url}
+                  entry={entry}
                   onCancel={() => setIsEditing(false)}
                   onSuccess={() => setIsEditing(false)}
                 />
               ) : (
-                <p className="text-sm font-mono break-all">{query.data.original_url}</p>
+                <p className="text-sm font-mono break-all">{entry.link.original_url}</p>
               )}
             </div>
 
@@ -676,18 +649,18 @@ export function LinkDetail() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
               <div>
                 <span className="block text-xs text-muted-foreground">建立時間</span>
-                <span className="font-medium">{absoluteTime(query.data.created_at)}</span>
+                <span className="font-medium">{absoluteTime(entry.link.created_at)}</span>
               </div>
               <div>
                 <span className="block text-xs text-muted-foreground">更新時間</span>
-                <span className="font-medium">{absoluteTime(query.data.updated_at)}</span>
+                <span className="font-medium">{absoluteTime(entry.link.updated_at)}</span>
               </div>
             </div>
 
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">到期時間</span>
-                {!isEditingExpiry && status !== 'deleted' && (
+                {!isEditingExpiry && entry.status !== 'deleted' && (
                   <button
                     type="button"
                     onClick={() => setIsEditingExpiry(true)}
@@ -700,13 +673,13 @@ export function LinkDetail() {
               </div>
               {isEditingExpiry ? (
                 <EditExpiresAtForm
-                  initialExpiresAt={query.data.expires_at}
-                  token={token}
+                  initialExpiresAt={entry.link.expires_at}
+                  entry={entry}
                   onCancel={() => setIsEditingExpiry(false)}
                   onSuccess={() => setIsEditingExpiry(false)}
                 />
               ) : (
-                <span className="text-sm font-medium">{absoluteTime(query.data.expires_at)}</span>
+                <span className="text-sm font-medium">{absoluteTime(entry.link.expires_at)}</span>
               )}
             </div>
           </div>
@@ -723,7 +696,7 @@ export function LinkDetail() {
             </p>
           </div>
 
-          {status !== 'deleted' && (
+          {entry.status !== 'deleted' && (
             <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-5 flex flex-col gap-3">
               <h2 className="text-sm font-semibold text-destructive uppercase tracking-wide">
                 危險操作
@@ -750,11 +723,11 @@ export function LinkDetail() {
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => deleteMutation.mutate()}
-                      disabled={deleteMutation.isPending}
-                      className={deleteMutation.isPending ? 'grayscale' : ''}
+                      onClick={handleDelete}
+                      disabled={entry.markDeleted.isPending}
+                      className={entry.markDeleted.isPending ? 'grayscale' : ''}
                     >
-                      {deleteMutation.isPending ? (
+                      {entry.markDeleted.isPending ? (
                         <>
                           <Loader2 className="mr-1 h-3 w-3 animate-spin" />
                           刪除中…
@@ -767,7 +740,7 @@ export function LinkDetail() {
                       variant="outline"
                       size="sm"
                       onClick={() => setShowDeleteConfirm(false)}
-                      disabled={deleteMutation.isPending}
+                      disabled={entry.markDeleted.isPending}
                     >
                       取消
                     </Button>
@@ -777,7 +750,7 @@ export function LinkDetail() {
             </div>
           )}
 
-          {isDeleted && (
+          {entry.status === 'deleted' && (
             <div className="rounded-lg border border-border bg-muted/30 p-4 flex flex-col gap-2">
               <p className="text-sm text-muted-foreground">
                 此連結已刪除，短網址目前回傳 410。

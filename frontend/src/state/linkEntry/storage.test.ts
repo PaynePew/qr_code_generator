@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { addToken, listTokens, markDeleted, removeFromHistory, type HistoryEntry } from './linkHistory'
+import { addToken, listTokens, markDismissed, removeFromHistory } from './storage'
+import type { HistoryEntry } from './types'
 
 class FakeStorage implements Storage {
   private store = new Map<string, string>()
@@ -28,7 +29,7 @@ function makeEntry(overrides: Partial<HistoryEntry> = {}): Omit<HistoryEntry, 'd
   }
 }
 
-describe('linkHistory', () => {
+describe('linkEntry/storage', () => {
   let storage: FakeStorage
 
   beforeEach(() => {
@@ -78,19 +79,19 @@ describe('linkHistory', () => {
     })
   })
 
-  describe('markDeleted', () => {
+  describe('markDismissed', () => {
     it('flips dismissed to true without removing the entry', () => {
       addToken(makeEntry(), storage)
-      markDeleted('abc123', storage)
+      markDismissed('abc123', storage)
       const result = listTokens(storage)
       expect(result).toHaveLength(1)
       expect(result[0].token).toBe('abc123')
       expect(result[0].dismissed).toBe(true)
     })
 
-    it('preserves all other fields when marking deleted', () => {
+    it('preserves all other fields when marking dismissed', () => {
       addToken(makeEntry(), storage)
-      markDeleted('abc123', storage)
+      markDismissed('abc123', storage)
       const entry = listTokens(storage)[0]
       expect(entry.originalUrl).toBe('https://example.com')
       expect(entry.createdAt).toBe('2026-05-09T10:00:00.000Z')
@@ -98,7 +99,7 @@ describe('linkHistory', () => {
 
     it('is a no-op for a token not in history', () => {
       addToken(makeEntry(), storage)
-      markDeleted('nonexistent', storage)
+      markDismissed('nonexistent', storage)
       expect(listTokens(storage)).toHaveLength(1)
       expect(listTokens(storage)[0].dismissed).toBe(false)
     })

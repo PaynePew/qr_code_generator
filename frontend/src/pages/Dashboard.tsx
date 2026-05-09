@@ -1,16 +1,17 @@
-import { useState, useCallback } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { LayoutDashboard, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { listTokens, removeFromHistory, addToken, type HistoryEntry } from '@/state/linkHistory'
-import { getLink, patchLink, type GetLinkResponse } from '@/api/qr'
-import { linkKey } from '@/api/queryKeys'
-import type { ApiError } from '@/api/client'
+import {
+  useLinkHistory,
+  useLinkEntry,
+  useRecoverEntry,
+  type HistoryEntry,
+} from '@/state/linkEntry'
 import { computeExpiresAt, toDatetimeLocalValue } from '@/lib/expiresAtPresets'
 import { getToastOptions } from '@/lib/toastOptions'
 import { CopyButton } from '@/components/ui/CopyButton'
-import { StatusBadge, type DerivedStatus } from '@/components/ui/StatusBadge'
+import { StatusBadge } from '@/components/ui/StatusBadge'
 import { Button } from '@/components/ui/button'
 
 const rtf = new Intl.RelativeTimeFormat('zh-TW', { numeric: 'auto' })
@@ -41,35 +42,27 @@ function truncateUrl(url: string, max = 50): string {
   return url.slice(0, max) + '…'
 }
 
-function RecoverByToken({ onRecovered }: { onRecovered: () => void }) {
+function RecoverByToken() {
   const [token, setToken] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [isPending, setIsPending] = useState(false)
+  const recover = useRecoverEntry()
 
-  async function handleRecover() {
+  function handleRecover() {
     const t = token.trim()
     if (!t) return
     setError(null)
-    setIsPending(true)
-    try {
-      const data = await getLink(t)
-      addToken({
-        token: data.token,
-        originalUrl: data.original_url,
-        createdAt: data.created_at,
-      })
-      setToken('')
-      onRecovered()
-    } catch (err) {
-      const apiError = err as ApiError
-      if (apiError.status === 404) {
-        setError('找不到此 Token，請確認後再試。')
-      } else {
-        setError('發生錯誤，請稍後再試。')
-      }
-    } finally {
-      setIsPending(false)
-    }
+    recover.mutate(t, {
+      onSuccess() {
+        setToken('')
+      },
+      onError(err) {
+        if (err.status === 404) {
+          setError('找不到此 Token，請確認後再試。')
+        } else {
+          setError('發生錯誤，請稍後再試。')
+        }
+      },
+    })
   }
 
   return (
@@ -81,18 +74,18 @@ function RecoverByToken({ onRecovered }: { onRecovered: () => void }) {
           placeholder="輸入 Token…"
           value={token}
           onChange={(e) => setToken(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') void handleRecover() }}
-          disabled={isPending}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleRecover() }}
+          disabled={recover.isPending}
           className="flex-1 rounded-md border border-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
         />
         <Button
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => void handleRecover()}
-          disabled={isPending || !token.trim()}
+          onClick={handleRecover}
+          disabled={recover.isPending || !token.trim()}
         >
-          {isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : '還原'}
+          {recover.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : '還原'}
         </Button>
       </div>
       {error && <p className="text-xs text-destructive">{error}</p>}
@@ -101,54 +94,35 @@ function RecoverByToken({ onRecovered }: { onRecovered: () => void }) {
 }
 
 function LinkCard({
-  entry,
+  row,
   hideDeleted,
-  onRemove,
 }: {
-  entry: HistoryEntry
+  row: HistoryEntry
   hideDeleted: boolean
-  onRemove: (token: string) => void
 }) {
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const query = useQuery<GetLinkResponse, ApiError>({
-    queryKey: linkKey(entry.token),
-    queryFn: () => getLink(entry.token),
-    retry: (_count, error) => error.status !== 404,
-  })
-
-  let status: DerivedStatus = 'active'
-  if (query.isError && query.error.status === 404) {
-    status = 'missing'
-  } else if (query.data) {
-    status = query.data.status
-  } else if (entry.dismissed) {
-    status = 'deleted'
-  }
+  const entry = useLinkEntry(row.token, row)
 
   // Catches API-reported deleted even when local dismissed flag is stale
-  if (hideDeleted && status === 'deleted') return null
+  if (hideDeleted && entry.status === 'deleted') return null
 
-  const shortUrl = query.data?.short_url ?? `…/r/${entry.token}`
-  const showRemoveButton = status === 'deleted' || status === 'missing'
+  const shortUrl = entry.link?.short_url ?? `…/r/${entry.token}`
+  const showRemoveButton = entry.status === 'deleted' || entry.status === 'missing'
 
   const [showReactivate, setShowReactivate] = useState(false)
   const [reactivateDate, setReactivateDate] = useState<string>(() =>
     toDatetimeLocalValue(new Date(computeExpiresAt(new Date(), '+30d')!)),
   )
 
-  const reactivateMutation = useMutation<GetLinkResponse, ApiError, string>({
-    mutationFn: (expires_at) => patchLink(entry.token, { expires_at }),
-    onSuccess(data) {
-      queryClient.setQueryData(linkKey(entry.token), data)
-      queryClient.invalidateQueries({ queryKey: linkKey(entry.token) })
+  async function handleReactivate() {
+    try {
+      await entry.reactivate(new Date(reactivateDate).toISOString())
       setShowReactivate(false)
       toast.success('連結已重新啟用', getToastOptions('success'))
-    },
-    onError() {
+    } catch {
       toast.error('重新啟用失敗，請稍後再試。', getToastOptions('error'))
-    },
-  })
+    }
+  }
 
   function handleCardClick(e: React.MouseEvent) {
     if ((e.target as HTMLElement).closest('button')) return
@@ -173,12 +147,12 @@ function LinkCard({
         <span className="text-sm font-medium truncate flex-1 min-w-0" title={entry.originalUrl}>
           {truncateUrl(entry.originalUrl)}
         </span>
-        {query.isLoading ? (
+        {entry.isLoading ? (
           <span className="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground animate-pulse">
             載入中
           </span>
         ) : (
-          <StatusBadge status={status} className={status === 'deleted' ? 'line-through' : undefined} />
+          <StatusBadge status={entry.status} className={entry.status === 'deleted' ? 'line-through' : undefined} />
         )}
       </div>
 
@@ -191,7 +165,7 @@ function LinkCard({
         建立於 {relativeTime(entry.createdAt)}
       </div>
 
-      {status === 'expired' && !showReactivate && (
+      {entry.status === 'expired' && !showReactivate && (
         <button
           type="button"
           onClick={(e) => { e.stopPropagation(); setShowReactivate(true) }}
@@ -201,7 +175,7 @@ function LinkCard({
         </button>
       )}
 
-      {status === 'expired' && showReactivate && (
+      {entry.status === 'expired' && showReactivate && (
         <div
           className="flex flex-col gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 mt-1"
           onClick={(e) => e.stopPropagation()}
@@ -211,17 +185,17 @@ function LinkCard({
             type="datetime-local"
             value={reactivateDate}
             onChange={(e) => setReactivateDate(e.target.value)}
-            disabled={reactivateMutation.isPending}
+            disabled={entry.reactivate.isPending}
             className="rounded-md border border-amber-300 px-3 py-1.5 text-xs outline-none focus:ring-2 focus:ring-amber-400/50 bg-white disabled:opacity-50"
           />
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => reactivateMutation.mutate(new Date(reactivateDate).toISOString())}
-              disabled={reactivateMutation.isPending || !reactivateDate}
+              onClick={handleReactivate}
+              disabled={entry.reactivate.isPending || !reactivateDate}
               className="flex items-center gap-1 rounded-md bg-amber-500 px-3 py-1 text-xs font-medium text-white hover:bg-amber-600 disabled:opacity-50 transition-colors"
             >
-              {reactivateMutation.isPending ? (
+              {entry.reactivate.isPending ? (
                 <>
                   <Loader2 className="h-3 w-3 animate-spin" />
                   啟用中…
@@ -233,7 +207,7 @@ function LinkCard({
             <button
               type="button"
               onClick={() => setShowReactivate(false)}
-              disabled={reactivateMutation.isPending}
+              disabled={entry.reactivate.isPending}
               className="rounded-md border border-amber-300 px-3 py-1 text-xs font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50 transition-colors"
             >
               取消
@@ -248,7 +222,7 @@ function LinkCard({
           className="self-start mt-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-destructive transition-colors"
           onClick={(e) => {
             e.stopPropagation()
-            onRemove(entry.token)
+            entry.removeFromHistory()
           }}
         >
           從歷史紀錄移除
@@ -260,16 +234,7 @@ function LinkCard({
 
 export function Dashboard() {
   const [hideDeleted, setHideDeleted] = useState(true)
-  const [entries, setEntries] = useState(() => listTokens())
-
-  const refreshEntries = useCallback(() => {
-    setEntries(listTokens())
-  }, [])
-
-  function handleRemove(token: string) {
-    removeFromHistory(token)
-    refreshEntries()
-  }
+  const entries = useLinkHistory()
 
   // Fast-path filter by local dismissed flag; LinkCard handles API-reported deleted
   const visibleEntries = hideDeleted ? entries.filter((e) => !e.dismissed) : entries
@@ -298,12 +263,11 @@ export function Dashboard() {
             顯示此瀏覽器建立的連結（共 {entries.length} 筆），依建立時間由新至舊排列。
           </p>
           <div className="flex flex-col gap-3">
-            {visibleEntries.map((entry) => (
+            {visibleEntries.map((row) => (
               <LinkCard
-                key={entry.token}
-                entry={entry}
+                key={row.token}
+                row={row}
                 hideDeleted={hideDeleted}
-                onRemove={handleRemove}
               />
             ))}
           </div>
@@ -325,7 +289,7 @@ export function Dashboard() {
             <Button>建立第一個 QR Code</Button>
           </Link>
           <div className="w-full max-w-sm border-t pt-4">
-            <RecoverByToken onRecovered={refreshEntries} />
+            <RecoverByToken />
           </div>
         </div>
       )}

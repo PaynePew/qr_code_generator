@@ -33,6 +33,17 @@ These states do **not** exist in the database or in any API response. They are c
 
 `missing` is rendered with a distinct badge in the dashboard list and a manual "remove from history" action. The frontend MUST NOT auto-purge missing entries silently — the user needs to see that data drift happened.
 
+#### Display priority
+
+The frontend reconciles three signals to decide what state to render for a Link History entry: the localStorage row (with its `dismissed` flag), the cached result of `GET /api/qr/{token}`, and any optimistic write made by a successful mutation. The priority is fixed:
+
+1. API returns 404 → `missing`
+2. API has data (including optimistically written data) → the API's `status`
+3. Query is still loading AND `dismissed=true` → `deleted` (synchronous fallback)
+4. Query is still loading AND `dismissed=false` → `loading`
+
+API truth wins over the local `dismissed` flag once it has loaded. The `dismissed` flag is a fallback for the loading window, not an independent source of truth. A successful `DELETE` writes `status='deleted'` into the query cache optimistically so rule 2 carries the new state through immediately, before the background refetch lands.
+
 ## Link History (frontend, Phase 1)
 
 The **Link History** is the per-browser list of tokens previously created from this device, kept in `localStorage`. It is the Phase 1 substitute for user identity — there is no auth, so the dashboard can only ever show the links a given browser has minted itself.
