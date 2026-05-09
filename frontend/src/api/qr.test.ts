@@ -10,10 +10,55 @@ vi.mock('./client', () => ({
 }))
 
 import { apiClient } from './client'
-import { patchLink, deleteLink } from './qr'
+import { getLink, patchLink, deleteLink } from './qr'
 
 beforeEach(() => {
   vi.clearAllMocks()
+})
+
+describe('getLink', () => {
+  it('sends GET /qr/{token}', async () => {
+    const mockData = {
+      token: 'abc1234',
+      original_url: 'https://example.com',
+      short_url: 'https://s.example.com/r/abc1234',
+      qr_code_url: '',
+      status: 'active' as const,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+      expires_at: null,
+    }
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: mockData })
+
+    await getLink('abc1234')
+
+    expect(apiClient.get).toHaveBeenCalledWith('/qr/abc1234')
+  })
+
+  it('returns the full link response', async () => {
+    const mockData = {
+      token: 'abc1234',
+      original_url: 'https://example.com',
+      short_url: 'https://s.example.com/r/abc1234',
+      qr_code_url: '',
+      status: 'active' as const,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+      expires_at: null,
+    }
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: mockData })
+
+    const result = await getLink('abc1234')
+
+    expect(result).toEqual(mockData)
+  })
+
+  it('propagates rejection from the client (e.g. 404)', async () => {
+    const err = Object.assign(new Error('Not Found'), { status: 404 })
+    vi.mocked(apiClient.get).mockRejectedValueOnce(err)
+
+    await expect(getLink('missing')).rejects.toMatchObject({ status: 404 })
+  })
 })
 
 describe('patchLink', () => {
