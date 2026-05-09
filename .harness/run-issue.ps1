@@ -81,10 +81,32 @@ function Invoke-AgentPhase {
     $staged = New-TemporaryFile
     Set-Content -Path $staged -Value $prompt -Encoding UTF8
 
+    # Per-phase log file under .harness/logs/. Same dir mirrors the
+    # .sandcastle/logs convention. The dir is gitignored except for
+    # .gitkeep so the structure persists but the noise doesn't.
+    $logDir = Join-Path $repoRoot '.harness\logs'
+    if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir | Out-Null }
+    $stamp   = Get-Date -Format 'yyyyMMdd-HHmmss'
+    $logPath = Join-Path $logDir "issue-$Issue-$PhaseName-$stamp.log"
+
     Write-Host ""
     Write-Host "===== Phase: $PhaseName  (model: $Model) =====" -ForegroundColor Magenta
+    Write-Host "Log: $logPath" -ForegroundColor DarkGray
+    Write-Host ""
 
     try {
+        # Streaming strategy:
+        #   - claude -p with --output-format stream-json --verbose emits one
+        #     JSON event per line, line-buffered.
+        #   - jq --unbuffered renders each event into a single readable line
+        #     (assistant text, [tool] calls, [result] tool output, [done]).
+        #   - Tee-Object on the host duplicates the stream to the log file
+        #     while also emitting it to PowerShell stdout for live viewing.
+        #
+        # NOTE: jq lives inside the qr-agent image (apt-get jq). The filter
+        # is single-quoted inside the heredoc so PowerShell does not try
+        # to interpolate $.
+
         docker run --rm `
             -v "${cred}:/tmp/host-credentials.json:ro" `
             -v "${repoRoot}:/workspace:rw" `
@@ -104,13 +126,41 @@ git config --global user.email 'agent@local.harness'
 git config --global --add safe.directory /workspace
 
 echo '=== Starting $PhaseName agent ==='
+echo ''
 claude -p "`$(cat /tmp/agent-prompt.md)" \
     --model $Model \
     --max-turns $MaxTurns \
     --add-dir /workspace \
     --permission-mode bypassPermissions \
-    --verbose
-"@
+    --verbose \
+    --output-format stream-json 2>&1 \
+  | jq -r --unbuffered '
+      if .type == "assistant" then
+        (.message.content[]? |
+          if .type == "text" then .text
+          elif .type == "tool_use" then "[tool] \(.name) \((.input | tojson) | .[0:240])"
+          else empty end)
+      elif .type == "user" then
+        (.message.content[]? |
+          if .type == "tool_result" then
+            "[result] " + (
+              (.content
+                | if type == "array"
+                    then (map(.text // (. | tostring)) | join(" "))
+                    else (. | tostring)
+                  end)
+              | tostring | gsub("\n"; " ") | .[0:240])
+          else empty end)
+      elif .type == "result" then
+        "[done] turns=\(.num_turns // 0) duration=\((((.duration_ms // 0) / 1000) | floor))s"
+      elif .type == "system" then
+        "[init] subtype=\(.subtype // "?") model=\(.model // "?")"
+      else empty end
+    ' 2>/dev/null
+echo ''
+echo "=== $PhaseName phase finished ==="
+"@ 2>&1 | Tee-Object -FilePath $logPath
+
         return $LASTEXITCODE
     } finally {
         Remove-Item $staged -Force -ErrorAction SilentlyContinue
