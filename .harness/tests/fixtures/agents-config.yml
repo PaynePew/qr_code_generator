@@ -10,3 +10,6 @@ agents:
   plan:
     model: claude-haiku-4-5
     max_turns: 5
+  review:
+    model: claude-sonnet-4-6
+    max_turns: 20

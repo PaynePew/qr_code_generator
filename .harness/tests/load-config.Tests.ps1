@@ -72,6 +72,18 @@ Describe 'Import-HarnessConfig' {
         $cfg.agents.plan.max_turns | Should -Be '5'
     }
 
+    It 'applies default agents.review model and max_turns when not specified' {
+        $cfg = Import-HarnessConfig -ConfigPath "$script:Fixtures/minimal-config.yml"
+        $cfg.agents.review.model     | Should -Be 'claude-opus-4-7'
+        $cfg.agents.review.max_turns | Should -Be '30'
+    }
+
+    It 'preserves explicit agents.review overrides' {
+        $cfg = Import-HarnessConfig -ConfigPath "$script:Fixtures/agents-config.yml"
+        $cfg.agents.review.model     | Should -Be 'claude-sonnet-4-6'
+        $cfg.agents.review.max_turns | Should -Be '20'
+    }
+
     It 'rejects tab indentation' {
         $tabFile = New-TemporaryFile
         Set-Content -Path $tabFile -Value "image: foo`nbranch_prefix: bar`ntracker:`n`ttype: github" -NoNewline

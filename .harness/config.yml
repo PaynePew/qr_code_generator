@@ -20,6 +20,9 @@ agents:
   plan:
     model: claude-opus-4-7
     max_turns: 10
+  review:
+    model: claude-opus-4-7
+    max_turns: 30
 
 docs:
   prd_dir: docs/prd
