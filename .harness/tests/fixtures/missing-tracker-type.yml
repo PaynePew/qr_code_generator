@@ -1,4 +1,4 @@
 image: agent-harness:latest
 branch_prefix: kanban-issue
 tracker:
-  repo: PaynePew/qr_code_generator
+  repo: acme/example
