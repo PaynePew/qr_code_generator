@@ -166,9 +166,11 @@ if ($SmokeTest) {
     $runLabel   = "issue-$Issue"
 
     # Derive kebab slug from issue title (used to form the branch name)
-    $issueTitle = (gh issue view $Issue --repo $cfg.tracker.repo --json title --jq '.title') 2>&1
+    $issueTitle = gh issue view $Issue --repo $cfg.tracker.repo --json title --jq '.title' 2>&1
+    if ($LASTEXITCODE -ne 0) { Fail "gh issue view #$Issue failed: $issueTitle" }
     $slug = ($issueTitle -replace '[^A-Za-z0-9]+', '-').ToLower().Trim('-')
     if ($slug.Length -gt 40) { $slug = $slug.Substring(0, 40).TrimEnd('-') }
+    if (-not $slug) { Fail "Could not derive slug from issue #$Issue title: '$issueTitle'" }
 
     # Atomic branch claim — exits with error if already claimed and no -Resume
     Step "Claiming branch"

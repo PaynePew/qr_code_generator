@@ -13,15 +13,16 @@ function Invoke-BranchClaim {
     $pattern    = "$Prefix$IssueNumber-*"
 
     $existing = @(& $ListBranches) |
-        Where-Object { $_.Trim() -like $pattern } |
+        ForEach-Object { $_.Trim() } |
+        Where-Object   { $_ -like $pattern } |
         Select-Object -First 1
 
     if ($existing) {
         if (-not $Resume) {
             throw "Branch already claimed by another terminal. To continue this work, re-run with -Resume."
         }
-        & $CheckoutBranch $existing.Trim()
-        return $existing.Trim()
+        & $CheckoutBranch $existing
+        return $existing
     }
 
     if ($Resume) {
