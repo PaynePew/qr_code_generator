@@ -26,9 +26,11 @@ scan_deconflict() {
 
     local branch
     while IFS= read -r branch; do
-        # Tolerate legacy `git branch` formatting in mock data.
+        # Tolerate legacy `git branch` formatting in mock data:
+        # the "* " current-branch marker, and the 2-space indent prefix
+        # that plain `git branch` (no --format) emits for non-current refs.
         branch="${branch#\* }"
-        branch="${branch# }"
+        branch="${branch#"${branch%%[![:space:]]*}"}"
         # Strip remote-tracking prefix ("origin/kanban-issue42-foo" → "kanban-issue42-foo").
         local local_name="${branch#*/}"
         if [[ "$local_name" =~ ^${prefix}([0-9]+)- ]]; then
