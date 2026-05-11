@@ -1,6 +1,13 @@
 #Requires -Version 7
-# Pure reducer: reduce(state, stream_json_event) → new_state
+# Pure reducer: reduce(state, stream_json_event) → new_state.
 # No I/O, no side effects.
+#
+# Operates on Claude Code's real stream-json shape:
+#   {"type":"system","subtype":"init","model":"..."}
+#   {"type":"assistant","message":{"content":[{"type":"text","text":"..."},
+#                                             {"type":"tool_use","name":"..","input":{..}}]}}
+#   {"type":"user","message":{"content":[{"type":"tool_result", ...}]}}
+#   {"type":"result","num_turns":N,"duration_ms":M,"result":"..."}
 
 function Invoke-HeartbeatReduce {
     param(
@@ -15,27 +22,43 @@ function Invoke-HeartbeatReduce {
     }
 
     switch ($Event.type) {
-        'system.init' {
-            $new.turns       = 0
-            $new.elapsed_s   = 0
-            $new.last_action = 'init'
+        'system' {
+            if ($Event.subtype -eq 'init') {
+                $new.turns       = 0
+                $new.elapsed_s   = 0
+                $new.last_action = 'init'
+            }
         }
-        'assistant.text' {
-            $new.turns       = $State.turns + 1
-            $new.last_action = 'thinking'
-        }
-        'tool_use' {
-            $toolName        = if ($Event.ContainsKey('name') -and $Event.name) { $Event.name } else { 'tool' }
-            $new.last_action = "tool:$toolName"
+        'assistant' {
+            $contents = @()
+            if ($Event.ContainsKey('message') -and $Event.message -is [hashtable] -and $Event.message.ContainsKey('content')) {
+                $contents = @($Event.message.content)
+            }
+            foreach ($item in $contents) {
+                if ($item -isnot [hashtable]) { continue }
+                switch ($item.type) {
+                    'text' {
+                        $new.turns       = $new.turns + 1
+                        $new.last_action = 'thinking'
+                    }
+                    'tool_use' {
+                        $toolName = if ($item.ContainsKey('name') -and $item.name) { $item.name } else { 'tool' }
+                        $new.last_action = "tool:$toolName"
+                    }
+                }
+            }
         }
         'result' {
-            if ($Event.ContainsKey('elapsed_s') -and $null -ne $Event.elapsed_s) {
-                $new.elapsed_s = $Event.elapsed_s
+            if ($Event.ContainsKey('duration_ms') -and $null -ne $Event.duration_ms) {
+                $new.elapsed_s = [int][Math]::Floor([double]$Event.duration_ms / 1000)
+            }
+            if ($Event.ContainsKey('num_turns') -and $null -ne $Event.num_turns) {
+                $new.turns = [int]$Event.num_turns
             }
             $new.last_action = 'done'
         }
         default {
-            # Unknown event — pass through unchanged
+            # Unknown event — pass through unchanged.
         }
     }
 

@@ -142,25 +142,20 @@ if ! $SMOKE_TEST && [[ -z "$ISSUE_NUMBER" ]]; then
     echo "  max_turns=$PLAN_MAX_TURNS"
 
     export HB_TURNS=0 HB_ELAPSED_S=0 HB_LAST_ACTION=""
-    ALL_CONTENT=""
     LAST_HB=""
 
     claude_cmd="claude --output-format stream-json --model $PLAN_MODEL --max-turns $PLAN_MAX_TURNS -p \"\$(cat /workspace/.harness/.current-prompt.md)\""
 
+    # parse_plan reads the full log file later (which embeds the <plan>
+    # block inside the result event), so we don't accumulate content here.
     while IFS= read -r line; do
         echo "$line" >> "$LOG_FILE"
-        event_type=$(printf '%s' "$line" | grep -o '"type":"[^"]*"' | head -1 | sed 's/"type":"//;s/"//' 2>/dev/null || true)
-        if [[ -n "$event_type" ]]; then
+        if printf '%s' "$line" | grep -q '"type":"'; then
             heartbeat_reduce "$line"
             hb_line="  [turns=$HB_TURNS elapsed=${HB_ELAPSED_S}s action=$HB_LAST_ACTION]"
             if [[ -n "$LAST_HB" ]]; then printf '\e[1A\e[2K'; fi
             echo "$hb_line"
             LAST_HB="$hb_line"
-            # Accumulate text
-            if [[ "$event_type" == "assistant.text" ]] || [[ "$event_type" == "result" ]]; then
-                text=$(printf '%s' "$line" | grep -o '"text":"[^"]*"' | head -1 | sed 's/"text":"//;s/"//' 2>/dev/null || true)
-                ALL_CONTENT="${ALL_CONTENT}${text}"
-            fi
         fi
     done < <(docker run --rm \
         --volume "${REPO_ROOT}:/workspace" \

@@ -268,8 +268,14 @@ if ($SmokeTest) {
             try {
                 $ev = $_ | ConvertFrom-Json -AsHashtable
                 $hbState = Invoke-HeartbeatReduce -State $hbState -Event $ev
-                if ($ev.type -eq 'assistant.text' -and $ev.ContainsKey('text')) { [void]$accContent.Append($ev.text) }
-                if ($ev.type -eq 'result'         -and $ev.ContainsKey('result')) { [void]$accContent.Append($ev.result) }
+                if ($ev.type -eq 'assistant' -and $ev.ContainsKey('message') -and $ev.message -is [hashtable] -and $ev.message.ContainsKey('content')) {
+                    foreach ($item in @($ev.message.content)) {
+                        if ($item -is [hashtable] -and $item.type -eq 'text' -and $item.ContainsKey('text')) {
+                            [void]$accContent.Append([string]$item.text)
+                        }
+                    }
+                }
+                if ($ev.type -eq 'result' -and $ev.ContainsKey('result')) { [void]$accContent.Append([string]$ev.result) }
                 Write-HbLine -State $hbState
             } catch {
                 # Non-JSON line (preamble, error, etc.) — skip; raw line is in $logFile.
