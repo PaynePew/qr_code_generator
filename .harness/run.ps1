@@ -77,6 +77,7 @@ $RepoRoot    = Split-Path $HarnessRoot -Parent
 . "$HarnessRoot/lib/heartbeat.ps1"
 . "$HarnessRoot/lib/parse-plan.ps1"
 . "$HarnessRoot/lib/scan-deconflict.ps1"
+. "$HarnessRoot/lib/format-event.ps1"
 
 # ── Terminal rendering helpers ─────────────────────────────────────────────────
 
@@ -113,6 +114,62 @@ function Format-Exclusions([System.Collections.Generic.HashSet[int]]$Set) {
 }
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+# Writes a section header to the human-readable log file.
+function Write-LogHeader {
+    param(
+        [Parameter(Mandatory)][string]$Phase,
+        [Parameter(Mandatory)][string]$LogFile,
+        [string]$RawLogFile = ''
+    )
+    $stamp = Get-Date -Format 'yyyy-MM-dd HH:mm:ss'
+    $banner = @(
+        "=================================================================="
+        "  $Phase  ·  $stamp"
+        "=================================================================="
+        ""
+    ) -join "`n"
+    Set-Content -Path $LogFile -Value $banner -Encoding UTF8
+    if ($RawLogFile) {
+        Set-Content -Path $RawLogFile -Value '' -Encoding UTF8
+    }
+}
+
+# Writes a footer pointing to the raw log file (if any).
+function Write-LogFooter {
+    param(
+        [Parameter(Mandatory)][string]$LogFile,
+        [string]$RawLogFile = ''
+    )
+    if ($RawLogFile) {
+        $rel = $RawLogFile.Replace($RepoRoot, '').TrimStart('\','/').Replace('\','/')
+        Add-Content -Path $LogFile -Value ""
+        Add-Content -Path $LogFile -Value "  raw  → $rel"
+    }
+}
+
+# Per-line dual-output writer: raw → .raw.jsonl, formatted → terminal + log.
+# Non-JSON lines pass through unchanged to both files.
+function Write-FormattedLine {
+    param(
+        [Parameter(Mandatory)][string]$RawLine,
+        [Parameter(Mandatory)][string]$LogFile,
+        [Parameter(Mandatory)][string]$RawLogFile
+    )
+    Add-Content -Path $RawLogFile -Value $RawLine
+    try {
+        $ev = $RawLine | ConvertFrom-Json -AsHashtable -ErrorAction Stop
+        $formatted = Format-StreamEvent -Event $ev
+        if ($formatted) {
+            Write-Host $formatted
+            Add-Content -Path $LogFile -Value $formatted
+            Add-Content -Path $LogFile -Value ''
+        }
+    } catch {
+        Write-Host $RawLine
+        Add-Content -Path $LogFile -Value $RawLine
+    }
+}
 
 function Invoke-HarnessHook {
     param(
@@ -333,11 +390,13 @@ if ($SmokeTest) {
     Set-Content -Path $promptMount -Value $rendered -Encoding UTF8
 
     $logFile    = "$HarnessRoot/logs/plan-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+    $rawLogFile = [System.IO.Path]::ChangeExtension($logFile, 'raw.jsonl')
     $planLogDir = Split-Path $logFile -Parent
     if (-not (Test-Path $planLogDir)) { New-Item -ItemType Directory $planLogDir | Out-Null }
 
     Write-RunHeader -IssueLabel '?' -Model $planModel -Branch '(pending)' -LogFile $logFile
     Write-Host "  max_turns=$planMaxTurns" -ForegroundColor DarkGray
+    Write-LogHeader -Phase 'plan' -LogFile $logFile -RawLogFile $rawLogFile
 
     $hbState    = @{ turns = 0; elapsed_s = 0; last_action = '' }
     $accContent = [System.Text.StringBuilder]::new()
@@ -355,10 +414,15 @@ if ($SmokeTest) {
     $planExit = -1
     try {
         & docker @dockerPlan 2>&1 | ForEach-Object {
-            Add-Content -Path $logFile -Value $_
+            Add-Content -Path $rawLogFile -Value $_
             try {
                 $ev = $_ | ConvertFrom-Json -AsHashtable
                 $hbState = Invoke-HeartbeatReduce -State $hbState -Event $ev
+                $formatted = Format-StreamEvent -Event $ev
+                if ($formatted) {
+                    Add-Content -Path $logFile -Value $formatted
+                    Add-Content -Path $logFile -Value ''
+                }
                 if ($ev.type -eq 'assistant' -and $ev.ContainsKey('message') -and $ev.message -is [hashtable] -and $ev.message.ContainsKey('content')) {
                     foreach ($item in @($ev.message.content)) {
                         if ($item -is [hashtable] -and $item.type -eq 'text' -and $item.ContainsKey('text')) {
@@ -369,13 +433,16 @@ if ($SmokeTest) {
                 if ($ev.type -eq 'result' -and $ev.ContainsKey('result')) { [void]$accContent.Append([string]$ev.result) }
                 Write-HbLine -State $hbState
             } catch {
-                # Non-JSON line (preamble, error, etc.) — skip; raw line is in $logFile.
+                # Non-JSON line (preamble, error, etc.) — write to human log too.
+                Add-Content -Path $logFile -Value $_
             }
         }
         $planExit = $LASTEXITCODE
     } finally {
         Remove-Item -ErrorAction SilentlyContinue $promptMount
     }
+
+    Write-LogFooter -LogFile $logFile -RawLogFile $rawLogFile
 
     if ($planExit -ne 0) {
         Close-HbLine "  FAILED: docker exit $planExit" -Color 'Red'
@@ -459,6 +526,9 @@ Write-Host "  Log → $logFile"
 $logDir = Split-Path $logFile -Parent
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory $logDir | Out-Null }
 
+$rawLogFile = [System.IO.Path]::ChangeExtension($logFile, 'raw.jsonl')
+Write-LogHeader -Phase $runLabel -LogFile $logFile -RawLogFile $rawLogFile
+
 # Build the claude invocation. For implement runs, pass --model and --max-turns.
 $claudeInvocation = if ($implementModel -and $maxTurns) {
     "claude --output-format stream-json --verbose --model $implementModel --max-turns $maxTurns -p `"`$(cat /workspace/.harness/.current-prompt.md)`""
@@ -478,11 +548,15 @@ $dockerArgs = @(
 )
 
 try {
-    & docker @dockerArgs 2>&1 | Tee-Object -FilePath $logFile
+    & docker @dockerArgs 2>&1 | ForEach-Object {
+        Write-FormattedLine -RawLine $_ -LogFile $logFile -RawLogFile $rawLogFile
+    }
     $exitCode = $LASTEXITCODE
 } finally {
     Remove-Item -ErrorAction SilentlyContinue $promptMount
 }
+
+Write-LogFooter -LogFile $logFile -RawLogFile $rawLogFile
 
 # ── Implement result ───────────────────────────────────────────────────────────
 
@@ -552,8 +626,10 @@ if ($ok -and $Issue -and -not $SmokeTest -and -not $SkipReview) {
     $reviewMount     = "$HarnessRoot/.current-prompt.md"
     Set-Content -Path $reviewMount -Value $renderedReview -Encoding UTF8
 
-    $reviewLogFile = "$HarnessRoot/logs/review-$Issue-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+    $reviewLogFile    = "$HarnessRoot/logs/review-$Issue-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+    $reviewRawLogFile = [System.IO.Path]::ChangeExtension($reviewLogFile, 'raw.jsonl')
     Write-Host "  Log → $reviewLogFile" -ForegroundColor DarkGray
+    Write-LogHeader -Phase "review-$Issue" -LogFile $reviewLogFile -RawLogFile $reviewRawLogFile
 
     $reviewCmd = "claude --output-format stream-json --verbose --model $reviewModel --max-turns $reviewMaxTurns -p `"`$(cat /workspace/.harness/.current-prompt.md)`""
     $dockerReview = @(
@@ -567,11 +643,15 @@ if ($ok -and $Issue -and -not $SmokeTest -and -not $SkipReview) {
 
     $reviewExit = -1
     try {
-        & docker @dockerReview 2>&1 | Tee-Object -FilePath $reviewLogFile
+        & docker @dockerReview 2>&1 | ForEach-Object {
+            Write-FormattedLine -RawLine $_ -LogFile $reviewLogFile -RawLogFile $reviewRawLogFile
+        }
         $reviewExit = $LASTEXITCODE
     } finally {
         Remove-Item -ErrorAction SilentlyContinue $reviewMount
     }
+
+    Write-LogFooter -LogFile $reviewLogFile -RawLogFile $reviewRawLogFile
 
     $reviewOk = $reviewExit -eq 0
     if ($reviewOk) {
@@ -617,8 +697,10 @@ if ($reviewOk -and $Issue -and -not $SmokeTest -and -not $SkipMerge) {
     $mergeMount    = "$HarnessRoot/.current-prompt.md"
     Set-Content -Path $mergeMount -Value $renderedMerge -Encoding UTF8
 
-    $mergeLogFile = "$HarnessRoot/logs/merge-$Issue-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+    $mergeLogFile    = "$HarnessRoot/logs/merge-$Issue-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+    $mergeRawLogFile = [System.IO.Path]::ChangeExtension($mergeLogFile, 'raw.jsonl')
     Write-Host "  Log → $mergeLogFile" -ForegroundColor DarkGray
+    Write-LogHeader -Phase "merge-$Issue" -LogFile $mergeLogFile -RawLogFile $mergeRawLogFile
 
     $mergeCmd = "claude --output-format stream-json --verbose --model $mergeModel --max-turns $mergeMaxTurns -p `"`$(cat /workspace/.harness/.current-prompt.md)`""
     $dockerMerge = @(
@@ -634,10 +716,15 @@ if ($reviewOk -and $Issue -and -not $SmokeTest -and -not $SkipMerge) {
     $mergeExit = -1
     try {
         & docker @dockerMerge 2>&1 | ForEach-Object {
-            Add-Content -Path $mergeLogFile -Value $_
-            Write-Host $_
+            Add-Content -Path $mergeRawLogFile -Value $_
             try {
                 $ev = $_ | ConvertFrom-Json -AsHashtable
+                $formatted = Format-StreamEvent -Event $ev
+                if ($formatted) {
+                    Write-Host $formatted
+                    Add-Content -Path $mergeLogFile -Value $formatted
+                    Add-Content -Path $mergeLogFile -Value ''
+                }
                 if ($ev.type -eq 'assistant' -and $ev.ContainsKey('message') -and $ev.message -is [hashtable] -and $ev.message.ContainsKey('content')) {
                     foreach ($item in @($ev.message.content)) {
                         if ($item -is [hashtable] -and $item.type -eq 'text' -and $item.ContainsKey('text')) {
@@ -647,13 +734,16 @@ if ($reviewOk -and $Issue -and -not $SmokeTest -and -not $SkipMerge) {
                 }
                 if ($ev.type -eq 'result' -and $ev.ContainsKey('result')) { [void]$mergeAccContent.Append([string]$ev.result) }
             } catch {
-                # Non-JSON line (preamble, error, etc.) — skip; raw line is in $mergeLogFile.
+                Write-Host $_
+                Add-Content -Path $mergeLogFile -Value $_
             }
         }
         $mergeExit = $LASTEXITCODE
     } finally {
         Remove-Item -ErrorAction SilentlyContinue $mergeMount
     }
+
+    Write-LogFooter -LogFile $mergeLogFile -RawLogFile $mergeRawLogFile
 
     $mergeOk = $mergeExit -eq 0
     if ($mergeOk) {
