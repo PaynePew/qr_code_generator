@@ -9,6 +9,24 @@
 #   {"type":"user","message":{"content":[{"type":"tool_result", ...}]}}
 #   {"type":"result","num_turns":N,"duration_ms":M,"result":"..."}
 
+# Pure renderer: state + (optional wall-clock) → single heartbeat line.
+# When -StartTime is supplied, elapsed is computed from wall-clock so it
+# advances during the run instead of staying at 0 until the result event.
+function Format-HeartbeatLine {
+    param(
+        [Parameter(Mandatory)][hashtable]$State,
+        [datetime]$StartTime,
+        [datetime]$Now
+    )
+    $elapsed = if ($PSBoundParameters.ContainsKey('StartTime')) {
+        if (-not $PSBoundParameters.ContainsKey('Now')) { $Now = Get-Date }
+        [int][Math]::Floor(($Now - $StartTime).TotalSeconds)
+    } else {
+        $State.elapsed_s
+    }
+    return "  [turns=$($State.turns) elapsed=${elapsed}s action=$($State.last_action)]"
+}
+
 function Invoke-HeartbeatReduce {
     param(
         [Parameter(Mandatory)][hashtable]$State,

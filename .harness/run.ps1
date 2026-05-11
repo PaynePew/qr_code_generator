@@ -84,13 +84,20 @@ $RepoRoot    = Split-Path $HarnessRoot -Parent
 $script:AnsiOk = $false
 try { $script:AnsiOk = [bool]$Host.UI.RawUI.SupportsVirtualTerminal } catch {}
 $script:HbVisible = $false
+$script:HbStartTime = $null
 
 function Write-RunHeader([string]$IssueLabel, [string]$Model, [string]$Branch, [string]$LogFile) {
     Write-Host "Issue: $IssueLabel  Agent: $Model  Branch: $Branch  Log: $LogFile" -ForegroundColor Cyan
 }
 
+function Start-HbTimer { $script:HbStartTime = Get-Date }
+
 function Write-HbLine([hashtable]$State) {
-    $line = "  [turns=$($State.turns) elapsed=$($State.elapsed_s)s action=$($State.last_action)]"
+    $line = if ($script:HbStartTime) {
+        Format-HeartbeatLine -State $State -StartTime $script:HbStartTime -Now (Get-Date)
+    } else {
+        Format-HeartbeatLine -State $State
+    }
     if ($script:AnsiOk -and $script:HbVisible) {
         Write-Host "`e[1A`e[2K$line"
     } else {
@@ -399,6 +406,7 @@ if ($SmokeTest) {
     Write-LogHeader -Phase 'plan' -LogFile $logFile -RawLogFile $rawLogFile
 
     $hbState    = @{ turns = 0; elapsed_s = 0; last_action = '' }
+    Start-HbTimer
     $accContent = [System.Text.StringBuilder]::new()
 
     $claudeCmd = "claude --output-format stream-json --verbose --model $planModel --max-turns $planMaxTurns -p `"`$(cat /workspace/.harness/.current-prompt.md)`""

@@ -2,6 +2,40 @@ BeforeAll {
     . "$PSScriptRoot/../lib/heartbeat.ps1"
 }
 
+Describe 'Format-HeartbeatLine — wall-clock elapsed' {
+    It 'computes elapsed seconds from start and now' {
+        $start = [datetime]'2026-05-11T16:00:00Z'
+        $now   = [datetime]'2026-05-11T16:00:42Z'
+        $state = @{ turns = 3; elapsed_s = 0; last_action = 'tool:Bash' }
+        $line = Format-HeartbeatLine -State $state -StartTime $start -Now $now
+        $line | Should -Match 'elapsed=42s'
+    }
+
+    It 'includes turns and last_action' {
+        $start = [datetime]'2026-05-11T16:00:00Z'
+        $now   = [datetime]'2026-05-11T16:00:05Z'
+        $state = @{ turns = 7; elapsed_s = 0; last_action = 'thinking' }
+        $line = Format-HeartbeatLine -State $state -StartTime $start -Now $now
+        $line | Should -Match 'turns=7'
+        $line | Should -Match 'action=thinking'
+        $line | Should -Match 'elapsed=5s'
+    }
+
+    It 'falls back to state.elapsed_s when StartTime is not provided' {
+        $state = @{ turns = 1; elapsed_s = 99; last_action = 'done' }
+        $line = Format-HeartbeatLine -State $state
+        $line | Should -Match 'elapsed=99s'
+    }
+
+    It 'rounds down sub-second wall-clock to integer seconds' {
+        $start = [datetime]'2026-05-11T16:00:00Z'
+        $now   = [datetime]'2026-05-11T16:00:03.9Z'
+        $state = @{ turns = 0; elapsed_s = 0; last_action = 'init' }
+        $line = Format-HeartbeatLine -State $state -StartTime $start -Now $now
+        $line | Should -Match 'elapsed=3s'
+    }
+}
+
 Describe 'Invoke-HeartbeatReduce' {
     Context 'system init' {
         It 'resets all fields when subtype is init' {
