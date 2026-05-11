@@ -133,6 +133,31 @@ function Invoke-HarnessHook {
     }
 }
 
+# Warns whenever any two phases share the same model — self-review safety is
+# weakened when the same model produces both the change and the review of it.
+function Invoke-SameModelWarning {
+    param([Parameter(Mandatory)][hashtable]$Agents)
+
+    $planModel      = $Agents.plan.model
+    $implementModel = $Agents.implement.model
+    $reviewModel    = $Agents.review.model
+    $mergeModel     = $Agents.merge.model
+
+    $pairs = @()
+    if ($planModel      -eq $implementModel) { $pairs += 'plan == implement' }
+    if ($implementModel -eq $reviewModel)    { $pairs += 'implement == review' }
+    if ($reviewModel    -eq $mergeModel)     { $pairs += 'review == merge' }
+    if ($planModel      -eq $reviewModel)    { $pairs += 'plan == review' }
+    if ($planModel      -eq $mergeModel)     { $pairs += 'plan == merge' }
+    if ($implementModel -eq $mergeModel)     { $pairs += 'implement == merge' }
+
+    if ($pairs.Count -eq 0) { return }
+    Write-Host ''
+    Write-Host ("  WARNING: same-model phase pairs detected ($($pairs -join '; '))." `
+        + ' Using the same model for multiple phases reduces reasoning diversity.' `
+        + ' Proceeding anyway.') -ForegroundColor Yellow
+}
+
 function Fail([string]$Msg, [string]$Remedy = '') {
     Write-Host "ERROR: $Msg" -ForegroundColor Red
     if ($Remedy) { Write-Host "  Run: $Remedy" -ForegroundColor Yellow }
@@ -200,26 +225,7 @@ if ($ReviewMaxTurns)    { $cfg.agents.review.max_turns     = "$ReviewMaxTurns" }
 if ($MergeMaxTurns)     { $cfg.agents.merge.max_turns      = "$MergeMaxTurns" }
 
 # ── Same-model warning (all phase pairs) ──────────────────────────────────────
-# Warn whenever any two phases share the same model — self-review safety is weakened.
-$planModel_     = $cfg.agents.plan.model
-$implementModel_ = $cfg.agents.implement.model
-$reviewModel_   = $cfg.agents.review.model
-$mergeModel_    = $cfg.agents.merge.model
-
-$sameModelPairs = @()
-if ($planModel_ -eq $implementModel_) { $sameModelPairs += 'plan == implement' }
-if ($implementModel_ -eq $reviewModel_) { $sameModelPairs += 'implement == review' }
-if ($reviewModel_ -eq $mergeModel_) { $sameModelPairs += 'review == merge' }
-if ($planModel_ -eq $reviewModel_) { $sameModelPairs += 'plan == review' }
-if ($planModel_ -eq $mergeModel_) { $sameModelPairs += 'plan == merge' }
-if ($implementModel_ -eq $mergeModel_) { $sameModelPairs += 'implement == merge' }
-
-if ($sameModelPairs.Count -gt 0) {
-    Write-Host ''
-    Write-Host ("  WARNING: same-model phase pairs detected ($($sameModelPairs -join '; '))." `
-        + ' Using the same model for multiple phases reduces reasoning diversity.' `
-        + ' Proceeding anyway.') -ForegroundColor Yellow
-}
+Invoke-SameModelWarning -Agents $cfg.agents
 
 # ── Image cache check / rebuild ────────────────────────────────────────────────
 
