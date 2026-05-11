@@ -12,10 +12,6 @@ Describe 'legacy harness files retired' {
         Test-Path (Join-Path $script:Root 'run-hello.ps1') | Should -BeFalse
     }
 
-    It 'CODING_STANDARDS.md is gone' {
-        Test-Path (Join-Path $script:Root 'CODING_STANDARDS.md') | Should -BeFalse
-    }
-
     It 'feature.md is gone' {
         Test-Path (Join-Path $script:Root 'feature.md') | Should -BeFalse
     }

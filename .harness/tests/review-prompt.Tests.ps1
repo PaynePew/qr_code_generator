@@ -1,6 +1,21 @@
 BeforeAll {
     $script:PromptPath = "$PSScriptRoot/../prompts/review.md"
     $script:Content    = Get-Content $script:PromptPath -Raw
+    $script:CodingStandardsPath = "$PSScriptRoot/../CODING_STANDARDS.md"
+}
+
+Describe 'CODING_STANDARDS.md is wired into the review phase' {
+    # Regression guard: slice 7 deleted this file but left the wrapper that
+    # reads it, silently injecting an empty standards block into review for
+    # every run until the next operator noticed. The file must exist as long
+    # as run.ps1 references it and prompts/review.md substitutes the block.
+    It 'CODING_STANDARDS.md exists at .harness/CODING_STANDARDS.md' {
+        Test-Path $script:CodingStandardsPath | Should -BeTrue
+    }
+
+    It 'is non-empty (would otherwise inject blank standards into review)' {
+        (Get-Content $script:CodingStandardsPath -Raw).Trim().Length | Should -BeGreaterThan 0
+    }
 }
 
 Describe 'review.md template' {

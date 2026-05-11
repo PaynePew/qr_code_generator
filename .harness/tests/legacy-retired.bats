@@ -11,10 +11,6 @@ REPO_ROOT="$BATS_TEST_DIRNAME/../.."
     [ ! -f "$HARNESS_ROOT/run-hello.ps1" ]
 }
 
-@test "CODING_STANDARDS.md is gone" {
-    [ ! -f "$HARNESS_ROOT/CODING_STANDARDS.md" ]
-}
-
 @test "feature.md is gone" {
     [ ! -f "$HARNESS_ROOT/feature.md" ]
 }
