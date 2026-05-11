@@ -18,6 +18,22 @@
     Skip the review phase after implement. The branch can still be merged.
 .PARAMETER SkipMerge
     Skip the merge phase after review. Commits and review stay on the branch; no push, no PR.
+.PARAMETER PlanModel
+    Override agents.plan.model from config (CLI takes precedence over config).
+.PARAMETER ImplementModel
+    Override agents.implement.model from config.
+.PARAMETER ReviewModel
+    Override agents.review.model from config.
+.PARAMETER MergeModel
+    Override agents.merge.model from config.
+.PARAMETER PlanMaxTurns
+    Override agents.plan.max_turns from config.
+.PARAMETER ImplementMaxTurns
+    Override agents.implement.max_turns from config.
+.PARAMETER ReviewMaxTurns
+    Override agents.review.max_turns from config.
+.PARAMETER MergeMaxTurns
+    Override agents.merge.max_turns from config.
 .EXAMPLE
     pwsh ./.harness/run.ps1               # plan → confirm → implement → review → merge
     pwsh ./.harness/run.ps1 -Plan         # plan only, print ranking, no implement
@@ -27,6 +43,7 @@
     pwsh ./.harness/run.ps1 -Issue 30 -SkipReview
     pwsh ./.harness/run.ps1 -Issue 30 -SkipMerge
     pwsh ./.harness/run.ps1 -SmokeTest
+    pwsh ./.harness/run.ps1 -Issue 30 -ImplementModel claude-haiku-4-5 -ImplementMaxTurns 40
 #>
 [CmdletBinding()]
 param(
@@ -36,7 +53,15 @@ param(
     [int]$Issue,
     [switch]$Resume,
     [switch]$SkipReview,
-    [switch]$SkipMerge
+    [switch]$SkipMerge,
+    [string]$PlanModel,
+    [string]$ImplementModel,
+    [string]$ReviewModel,
+    [string]$MergeModel,
+    [int]$PlanMaxTurns,
+    [int]$ImplementMaxTurns,
+    [int]$ReviewMaxTurns,
+    [int]$MergeMaxTurns
 )
 
 Set-StrictMode -Version Latest
@@ -88,6 +113,50 @@ function Format-Exclusions([System.Collections.Generic.HashSet[int]]$Set) {
 }
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
+function Invoke-HarnessHook {
+    param(
+        [string]$HookName,
+        [string]$HooksDir,
+        [int]$Issue,
+        [string]$Branch,
+        [string]$Phase
+    )
+    $hookPath = Join-Path $HooksDir $HookName
+    if (-not (Test-Path $hookPath)) { return }
+    $env:HARNESS_ISSUE  = "$Issue"
+    $env:HARNESS_BRANCH = $Branch
+    $env:HARNESS_PHASE  = $Phase
+    bash $hookPath
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  WARNING: hook '$HookName' exited $LASTEXITCODE — continuing." -ForegroundColor Yellow
+    }
+}
+
+# Warns whenever any two phases share the same model — self-review safety is
+# weakened when the same model produces both the change and the review of it.
+function Invoke-SameModelWarning {
+    param([Parameter(Mandatory)][hashtable]$Agents)
+
+    $planModel      = $Agents.plan.model
+    $implementModel = $Agents.implement.model
+    $reviewModel    = $Agents.review.model
+    $mergeModel     = $Agents.merge.model
+
+    $pairs = @()
+    if ($planModel      -eq $implementModel) { $pairs += 'plan == implement' }
+    if ($implementModel -eq $reviewModel)    { $pairs += 'implement == review' }
+    if ($reviewModel    -eq $mergeModel)     { $pairs += 'review == merge' }
+    if ($planModel      -eq $reviewModel)    { $pairs += 'plan == review' }
+    if ($planModel      -eq $mergeModel)     { $pairs += 'plan == merge' }
+    if ($implementModel -eq $mergeModel)     { $pairs += 'implement == merge' }
+
+    if ($pairs.Count -eq 0) { return }
+    Write-Host ''
+    Write-Host ("  WARNING: same-model phase pairs detected ($($pairs -join '; '))." `
+        + ' Using the same model for multiple phases reduces reasoning diversity.' `
+        + ' Proceeding anyway.') -ForegroundColor Yellow
+}
 
 function Fail([string]$Msg, [string]$Remedy = '') {
     Write-Host "ERROR: $Msg" -ForegroundColor Red
@@ -145,6 +214,19 @@ $imageName  = $cfg.image
 $markerPath = "$HarnessRoot/.image-hash"
 Write-Host "  image=$imageName  branch_prefix=$($cfg.branch_prefix)" -ForegroundColor DarkGray
 
+# ── CLI overrides (CLI > config > built-in default) ────────────────────────────
+if ($PlanModel)         { $cfg.agents.plan.model           = $PlanModel }
+if ($ImplementModel)    { $cfg.agents.implement.model      = $ImplementModel }
+if ($ReviewModel)       { $cfg.agents.review.model         = $ReviewModel }
+if ($MergeModel)        { $cfg.agents.merge.model          = $MergeModel }
+if ($PlanMaxTurns)      { $cfg.agents.plan.max_turns       = "$PlanMaxTurns" }
+if ($ImplementMaxTurns) { $cfg.agents.implement.max_turns  = "$ImplementMaxTurns" }
+if ($ReviewMaxTurns)    { $cfg.agents.review.max_turns     = "$ReviewMaxTurns" }
+if ($MergeMaxTurns)     { $cfg.agents.merge.max_turns      = "$MergeMaxTurns" }
+
+# ── Same-model warning (all phase pairs) ──────────────────────────────────────
+Invoke-SameModelWarning -Agents $cfg.agents
+
 # ── Image cache check / rebuild ────────────────────────────────────────────────
 
 Step 'Image cache check'
@@ -201,8 +283,8 @@ if ($SmokeTest) {
     $docsPrdDir     = if ($cfg.docs -is [hashtable])      { $cfg.docs.prd_dir }         else { '' }
     $docsContext    = if ($cfg.docs -is [hashtable])      { $cfg.docs.context }          else { '' }
     $docsAdrDir     = if ($cfg.docs -is [hashtable])      { $cfg.docs.adr_dir }          else { '' }
-    $testsBlock     = if ($cfg.tests -is [hashtable])     { $cfg.tests.block }           else { '' }
-    $typecheckBlock = if ($cfg.typecheck -is [hashtable]) { $cfg.typecheck.block }       else { '' }
+    $testsBlock     = Get-ConfigBlock -Config $cfg -Section 'tests'     -WorkDir $RepoRoot
+    $typecheckBlock = Get-ConfigBlock -Config $cfg -Section 'typecheck' -WorkDir $RepoRoot
     $commitStyle    = if ($cfg.commit -is [hashtable])    { $cfg.commit.style }          else { '' }
 
     $subs = @{
@@ -365,6 +447,12 @@ Set-Content -Path $promptMount -Value $renderedPrompt -Encoding UTF8
 
 # ── Run container ──────────────────────────────────────────────────────────────
 
+# before-tests hook: runs on host before implement container starts
+if ($Issue -and -not $SmokeTest) {
+    Invoke-HarnessHook -HookName 'before-tests.sh' -HooksDir "$HarnessRoot/hooks" `
+        -Issue $Issue -Branch $branchName -Phase 'implement'
+}
+
 Step "Running $runLabel"
 Write-Host "  Log → $logFile"
 
@@ -402,6 +490,12 @@ $ok          = $exitCode -eq 0
 $implStatus  = if ($ok) { 'COMPLETE' } else { "FAILED (exit $exitCode)" }
 $implOk      = $ok
 
+# after-implement hook: runs on host after implement container exits (success or fail)
+if ($Issue -and -not $SmokeTest) {
+    Invoke-HarnessHook -HookName 'after-implement.sh' -HooksDir "$HarnessRoot/hooks" `
+        -Issue $Issue -Branch $branchName -Phase 'implement'
+}
+
 if (-not $ok -and $SmokeTest) {
     Write-Host ''
     Write-Host "  Smoke test FAILED (exit $exitCode)." -ForegroundColor Red
@@ -428,15 +522,6 @@ $reviewStatus = '⊝ SKIPPED'
 if ($ok -and $Issue -and -not $SmokeTest -and -not $SkipReview) {
     $reviewModel    = $cfg.agents.review.model
     $reviewMaxTurns = $cfg.agents.review.max_turns
-
-    # Same-model pre-flight warning — structural self-review safety is weakened.
-    if ($implementModel -eq $reviewModel) {
-        Write-Host ''
-        Write-Host '  WARNING: agents.implement.model and agents.review.model are the same' `
-            "($reviewModel). Self-review safety depends on different models producing" `
-            'different reasoning traces; using the same model reduces that guarantee.' `
-            'Proceeding anyway.' -ForegroundColor Yellow
-    }
 
     Step 'Review phase'
     Write-Host "  model=$reviewModel  max_turns=$reviewMaxTurns" -ForegroundColor DarkGray
@@ -516,7 +601,7 @@ if ($reviewOk -and $Issue -and -not $SmokeTest -and -not $SkipMerge) {
     Step 'Merge phase'
     Write-Host "  model=$mergeModel  max_turns=$mergeMaxTurns" -ForegroundColor DarkGray
 
-    $testsBlock = if ($cfg.tests -is [hashtable]) { $cfg.tests.block } else { '' }
+    $testsBlock = Get-ConfigBlock -Config $cfg -Section 'tests' -WorkDir $RepoRoot
 
     $mergeSubs = @{
         ISSUE       = "$Issue"

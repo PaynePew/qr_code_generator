@@ -84,3 +84,37 @@ function Import-HarnessConfig {
 
     return $config
 }
+
+function Resolve-WhenPredicate {
+    param(
+        [string]$Predicate,
+        [Parameter(Mandatory)][string]$WorkDir
+    )
+    if (-not $Predicate -or $Predicate -eq 'true') { return $true }
+    if ($Predicate -match '^exists\((.+)\)$') {
+        return [bool](Test-Path (Join-Path $WorkDir $Matches[1]))
+    }
+    throw "Unknown when: predicate '$Predicate'"
+}
+
+function Get-ConfigBlock {
+    param(
+        [Parameter(Mandatory)][hashtable]$Config,
+        [Parameter(Mandatory)][string]$Section,
+        [Parameter(Mandatory)][string]$WorkDir
+    )
+    $entries = $Config[$Section]
+    if ($entries -isnot [hashtable]) { return '' }
+    # Old format: flat block key
+    if ($entries.ContainsKey('block')) { return $entries['block'] }
+    # New format: named sub-entries each with block + optional when
+    $blocks = @()
+    foreach ($key in ($entries.Keys | Sort-Object)) {
+        $entry = $entries[$key]
+        if ($entry -isnot [hashtable] -or -not $entry.ContainsKey('block')) { continue }
+        if (Resolve-WhenPredicate -Predicate ($entry['when'] ?? '') -WorkDir $WorkDir) {
+            $blocks += $entry['block']
+        }
+    }
+    return ($blocks -join ' && ')
+}

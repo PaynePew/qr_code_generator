@@ -106,3 +106,105 @@ Describe 'Import-HarnessConfig' {
         }
     }
 }
+
+Describe 'Resolve-WhenPredicate' {
+    It 'returns true for absent/empty predicate (default)' {
+        Resolve-WhenPredicate -Predicate '' -WorkDir $TestDrive | Should -Be $true
+    }
+
+    It 'returns true for predicate "true"' {
+        Resolve-WhenPredicate -Predicate 'true' -WorkDir $TestDrive | Should -Be $true
+    }
+
+    It 'returns true for exists() when path is present' {
+        $work = Join-Path $TestDrive 'has-backend'
+        New-Item -ItemType Directory -Path "$work/backend" -Force | Out-Null
+        Resolve-WhenPredicate -Predicate 'exists(backend)' -WorkDir $work | Should -Be $true
+    }
+
+    It 'returns false for exists() when path is absent' {
+        $work = Join-Path $TestDrive 'no-backend'
+        New-Item -ItemType Directory -Path $work -Force | Out-Null
+        Resolve-WhenPredicate -Predicate 'exists(nonexistent)' -WorkDir $work | Should -Be $false
+    }
+
+    It 'throws for unknown predicate' {
+        { Resolve-WhenPredicate -Predicate 'unknown()' -WorkDir $TestDrive } | Should -Throw '*predicate*'
+    }
+}
+
+Describe 'Get-ConfigBlock' {
+    It 'returns block directly for old-style flat tests entry (no when)' {
+        $cfg = Import-HarnessConfig -ConfigPath "$script:Fixtures/minimal-config.yml"
+        $cfg['tests'] = @{ block = 'pytest .' }
+        Get-ConfigBlock -Config $cfg -Section 'tests' -WorkDir $TestDrive | Should -Be 'pytest .'
+    }
+
+    It 'returns empty string when section is absent' {
+        $cfg = Import-HarnessConfig -ConfigPath "$script:Fixtures/minimal-config.yml"
+        Get-ConfigBlock -Config $cfg -Section 'tests' -WorkDir $TestDrive | Should -Be ''
+    }
+
+    It 'includes entry without when: predicate unconditionally' {
+        $cfg = Import-HarnessConfig -ConfigPath "$script:Fixtures/minimal-config.yml"
+        $cfg['tests'] = @{
+            root = @{ block = 'pytest .' }
+        }
+        Get-ConfigBlock -Config $cfg -Section 'tests' -WorkDir $TestDrive | Should -Be 'pytest .'
+    }
+
+    It 'includes entry when exists() predicate matches a present path' {
+        $work = Join-Path $TestDrive 'has-backend'
+        New-Item -ItemType Directory -Path "$work/backend" -Force | Out-Null
+        $cfg = Import-HarnessConfig -ConfigPath "$script:Fixtures/minimal-config.yml"
+        $cfg['tests'] = @{
+            backend = @{ block = 'pytest backend/'; when = 'exists(backend)' }
+        }
+        Get-ConfigBlock -Config $cfg -Section 'tests' -WorkDir $work | Should -Be 'pytest backend/'
+    }
+
+    It 'excludes entry when exists() predicate path is absent' {
+        $work = Join-Path $TestDrive 'empty-project'
+        New-Item -ItemType Directory -Path $work -Force | Out-Null
+        $cfg = Import-HarnessConfig -ConfigPath "$script:Fixtures/minimal-config.yml"
+        $cfg['tests'] = @{
+            backend = @{ block = 'pytest backend/'; when = 'exists(backend)' }
+        }
+        Get-ConfigBlock -Config $cfg -Section 'tests' -WorkDir $work | Should -Be ''
+    }
+
+    It 'combines multiple entries with && joining passing entries' {
+        $work = Join-Path $TestDrive 'mixed-project'
+        New-Item -ItemType Directory -Path "$work/backend" -Force | Out-Null
+        $cfg = Import-HarnessConfig -ConfigPath "$script:Fixtures/minimal-config.yml"
+        $cfg['tests'] = @{
+            backend  = @{ block = 'pytest backend/'; when = 'exists(backend)' }
+            frontend = @{ block = 'npm test'; when = 'exists(frontend)' }
+            root     = @{ block = 'pytest .' }
+        }
+        $result = Get-ConfigBlock -Config $cfg -Section 'tests' -WorkDir $work
+        $result | Should -Match 'pytest backend/'
+        $result | Should -Match 'pytest \.'
+        $result | Should -Not -Match 'npm test'
+    }
+}
+
+Describe 'Flat-layout config — no when: predicates' {
+    It 'loads flat-layout-config.yml without error' {
+        { Import-HarnessConfig -ConfigPath "$script:Fixtures/flat-layout-config.yml" } | Should -Not -Throw
+    }
+
+    It 'flat-layout tests block resolves unconditionally for any workdir' {
+        $cfg = Import-HarnessConfig -ConfigPath "$script:Fixtures/flat-layout-config.yml"
+        $work = Join-Path $TestDrive 'flat-project'
+        New-Item -ItemType Directory -Path $work -Force | Out-Null
+        Get-ConfigBlock -Config $cfg -Section 'tests' -WorkDir $work | Should -Be 'pytest .'
+    }
+
+    It 'flat-layout typecheck block resolves unconditionally for any workdir' {
+        $cfg = Import-HarnessConfig -ConfigPath "$script:Fixtures/flat-layout-config.yml"
+        $work = Join-Path $TestDrive 'flat-project2'
+        New-Item -ItemType Directory -Path $work -Force | Out-Null
+        Get-ConfigBlock -Config $cfg -Section 'typecheck' -WorkDir $work | Should -Be 'mypy .'
+    }
+}
