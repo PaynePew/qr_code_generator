@@ -261,6 +261,14 @@ if ($LASTEXITCODE -ne 0) { Fail 'Docker daemon not running. Start Docker Desktop
 gh auth status 2>&1 | Out-Null
 if ($LASTEXITCODE -ne 0) { Fail 'Not authenticated with GitHub CLI.' 'gh auth login' }
 
+# 4. GH_TOKEN — forwarded to container so the agent can run `gh` inside.
+# Auto-populated from `gh auth token` when not pre-set in the shell.
+if (-not $env:GH_TOKEN) {
+    $env:GH_TOKEN = (& gh auth token 2>$null)
+    if ($env:GH_TOKEN) { $env:GH_TOKEN = $env:GH_TOKEN.Trim() }
+    if (-not $env:GH_TOKEN) { Fail 'gh is logged in but `gh auth token` returned empty.' 'gh auth refresh' }
+}
+
 # 4. git repo
 if (-not (Test-Path "$RepoRoot/.git")) { Fail 'Not inside a git repository.' }
 
@@ -409,11 +417,12 @@ if ($SmokeTest) {
     Start-HbTimer
     $accContent = [System.Text.StringBuilder]::new()
 
-    $claudeCmd = "claude --output-format stream-json --verbose --model $planModel --max-turns $planMaxTurns -p `"`$(cat /workspace/.harness/.current-prompt.md)`""
+    $claudeCmd = "claude --output-format stream-json --verbose --permission-mode bypassPermissions --model $planModel --max-turns $planMaxTurns -p `"`$(cat /workspace/.harness/.current-prompt.md)`""
     $dockerPlan = @(
         'run', '--rm',
         '--volume', "${RepoRoot}:/workspace",
         '--env',    'CLAUDE_CODE_OAUTH_TOKEN',
+        '--env',    'GH_TOKEN',
         '--workdir', '/workspace',
         $imageName,
         'bash', '-lc', $claudeCmd
@@ -539,9 +548,9 @@ Write-LogHeader -Phase $runLabel -LogFile $logFile -RawLogFile $rawLogFile
 
 # Build the claude invocation. For implement runs, pass --model and --max-turns.
 $claudeInvocation = if ($implementModel -and $maxTurns) {
-    "claude --output-format stream-json --verbose --model $implementModel --max-turns $maxTurns -p `"`$(cat /workspace/.harness/.current-prompt.md)`""
+    "claude --output-format stream-json --verbose --permission-mode bypassPermissions --model $implementModel --max-turns $maxTurns -p `"`$(cat /workspace/.harness/.current-prompt.md)`""
 } else {
-    'claude --output-format stream-json --verbose -p "$(cat /workspace/.harness/.current-prompt.md)"'
+    'claude --output-format stream-json --verbose --permission-mode bypassPermissions -p "$(cat /workspace/.harness/.current-prompt.md)"'
 }
 
 # Pass the token by reference (no `=value`) so it doesn't appear in
@@ -550,6 +559,7 @@ $dockerArgs = @(
     'run', '--rm',
     '--volume', "${RepoRoot}:/workspace",
     '--env',    'CLAUDE_CODE_OAUTH_TOKEN',
+    '--env',    'GH_TOKEN',
     '--workdir', '/workspace',
     $imageName,
     'bash', '-lc', $claudeInvocation
@@ -639,11 +649,12 @@ if ($ok -and $Issue -and -not $SmokeTest -and -not $SkipReview) {
     Write-Host "  Log → $reviewLogFile" -ForegroundColor DarkGray
     Write-LogHeader -Phase "review-$Issue" -LogFile $reviewLogFile -RawLogFile $reviewRawLogFile
 
-    $reviewCmd = "claude --output-format stream-json --verbose --model $reviewModel --max-turns $reviewMaxTurns -p `"`$(cat /workspace/.harness/.current-prompt.md)`""
+    $reviewCmd = "claude --output-format stream-json --verbose --permission-mode bypassPermissions --model $reviewModel --max-turns $reviewMaxTurns -p `"`$(cat /workspace/.harness/.current-prompt.md)`""
     $dockerReview = @(
         'run', '--rm',
         '--volume', "${RepoRoot}:/workspace",
         '--env',    'CLAUDE_CODE_OAUTH_TOKEN',
+        '--env',    'GH_TOKEN',
         '--workdir', '/workspace',
         $imageName,
         'bash', '-lc', $reviewCmd
@@ -710,11 +721,12 @@ if ($reviewOk -and $Issue -and -not $SmokeTest -and -not $SkipMerge) {
     Write-Host "  Log → $mergeLogFile" -ForegroundColor DarkGray
     Write-LogHeader -Phase "merge-$Issue" -LogFile $mergeLogFile -RawLogFile $mergeRawLogFile
 
-    $mergeCmd = "claude --output-format stream-json --verbose --model $mergeModel --max-turns $mergeMaxTurns -p `"`$(cat /workspace/.harness/.current-prompt.md)`""
+    $mergeCmd = "claude --output-format stream-json --verbose --permission-mode bypassPermissions --model $mergeModel --max-turns $mergeMaxTurns -p `"`$(cat /workspace/.harness/.current-prompt.md)`""
     $dockerMerge = @(
         'run', '--rm',
         '--volume', "${RepoRoot}:/workspace",
         '--env',    'CLAUDE_CODE_OAUTH_TOKEN',
+        '--env',    'GH_TOKEN',
         '--workdir', '/workspace',
         $imageName,
         'bash', '-lc', $mergeCmd
@@ -786,7 +798,8 @@ if ($Issue) {
     Write-Host ("║  Pipeline result".PadRight(59) + '║') -ForegroundColor $finalColor
 }
 Write-Host ('╠' + '═' * 58 + '╣') -ForegroundColor $finalColor
-Write-Host ("║  implement : $implStatusLine".PadRight(59) + '║') -ForegroundColor $finalColor
+$phaseLabel = if ($SmokeTest) { 'smoke-test' } else { 'implement ' }
+Write-Host ("║  $phaseLabel : $implStatusLine".PadRight(59) + '║') -ForegroundColor $finalColor
 if ($Issue -and -not $SmokeTest) {
     Write-Host ("║  review    : $reviewStatusLine".PadRight(59) + '║') -ForegroundColor $finalColor
     Write-Host ("║  merge     : $mergeStatusLine".PadRight(59) + '║') -ForegroundColor $finalColor
