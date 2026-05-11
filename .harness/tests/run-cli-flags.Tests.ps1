@@ -63,3 +63,15 @@ Describe 'run.ps1 CLI override — precedence wiring' {
         $script:RunContent | Should -Match 'PlanMaxTurns.*agents|agents.*PlanMaxTurns'
     }
 }
+
+Describe 'run.ps1 — config-driven docs paths' {
+    # Regression guard: an earlier slice hardcoded "$RepoRoot/docs/adr" in the
+    # plan phase, ignoring cfg.docs.adr_dir. That made the harness assume a
+    # specific repo layout and silently injected an empty ADR list when the
+    # config pointed elsewhere.
+    It 'reads cfg.docs.adr_dir for the plan-phase ADR list (not hardcoded path)' {
+        $script:RunContent | Should -Match 'cfg\.docs\.adr_dir|docs\.adr_dir'
+        # Negative assertion: the old hardcoded literal must be gone.
+        $script:RunContent | Should -Not -Match '"\$RepoRoot/docs/adr"'
+    }
+}

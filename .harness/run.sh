@@ -112,9 +112,12 @@ if ! $SMOKE_TEST && [[ -z "$ISSUE_NUMBER" ]]; then
     IN_PROGRESS="${EXCL_LIST:-none}"
     echo "  In-progress: $IN_PROGRESS"
 
-    ADR_DIR="$REPO_ROOT/docs/adr"
+    ADR_DIR=""
+    if [[ -n "${HARNESS_DOCS_ADR_DIR:-}" ]]; then
+        ADR_DIR="$REPO_ROOT/$HARNESS_DOCS_ADR_DIR"
+    fi
     ADR_NAMES=""
-    if [[ -d "$ADR_DIR" ]]; then
+    if [[ -n "$ADR_DIR" && -d "$ADR_DIR" ]]; then
         ADR_NAMES=$(ls "$ADR_DIR"/*.md 2>/dev/null | xargs -n1 basename | tr '\n' ',' | sed 's/,$//')
     fi
 

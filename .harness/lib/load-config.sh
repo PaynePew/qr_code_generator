@@ -4,7 +4,8 @@
 # Exports: HARNESS_IMAGE, HARNESS_BRANCH_PREFIX, HARNESS_TRACKER_TYPE,
 #          HARNESS_TRACKER_REPO, HARNESS_DEFAULT_MODEL,
 #          HARNESS_AGENT_IMPLEMENT_MODEL, HARNESS_AGENT_IMPLEMENT_MAX_TURNS,
-#          HARNESS_AGENT_PLAN_MODEL, HARNESS_AGENT_PLAN_MAX_TURNS
+#          HARNESS_AGENT_PLAN_MODEL, HARNESS_AGENT_PLAN_MAX_TURNS,
+#          HARNESS_DOCS_ADR_DIR (optional, may be empty)
 
 # _yaml_top FILE KEY → prints scalar value of a top-level YAML key, or empty.
 _yaml_top() {
@@ -72,6 +73,7 @@ load_config() {
     HARNESS_AGENT_IMPLEMENT_MAX_TURNS=$(_yaml_deep "$config_path" "agents" "implement" "max_turns")
     HARNESS_AGENT_PLAN_MODEL=$(_yaml_deep "$config_path" "agents" "plan" "model")
     HARNESS_AGENT_PLAN_MAX_TURNS=$(_yaml_deep "$config_path" "agents" "plan" "max_turns")
+    HARNESS_DOCS_ADR_DIR=$(_yaml_nested "$config_path" "docs" "adr_dir")
 
     if [[ -z "$HARNESS_IMAGE" ]]; then
         echo "ERROR: Missing required config key 'image' in $config_path." >&2
@@ -103,5 +105,6 @@ load_config() {
     export HARNESS_IMAGE HARNESS_BRANCH_PREFIX HARNESS_TRACKER_TYPE HARNESS_TRACKER_REPO \
            HARNESS_DEFAULT_MODEL \
            HARNESS_AGENT_IMPLEMENT_MODEL HARNESS_AGENT_IMPLEMENT_MAX_TURNS \
-           HARNESS_AGENT_PLAN_MODEL HARNESS_AGENT_PLAN_MAX_TURNS
+           HARNESS_AGENT_PLAN_MODEL HARNESS_AGENT_PLAN_MAX_TURNS \
+           HARNESS_DOCS_ADR_DIR
 }

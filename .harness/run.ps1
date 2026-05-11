@@ -380,8 +380,11 @@ if ($SmokeTest) {
     $excluded = Get-DeconflictExclusions -BranchPrefix $cfg.branch_prefix
     Write-Host "  In-progress: $(Format-Exclusions $excluded)" -ForegroundColor DarkGray
 
-    $adrDir   = "$RepoRoot/docs/adr"
-    $adrNames = if (Test-Path $adrDir) {
+    $adrDirRel = if ($cfg.ContainsKey('docs') -and $cfg.docs -is [hashtable] -and $cfg.docs.ContainsKey('adr_dir')) {
+        $cfg.docs.adr_dir
+    } else { '' }
+    $adrDir   = if ($adrDirRel) { Join-Path $RepoRoot $adrDirRel } else { '' }
+    $adrNames = if ($adrDir -and (Test-Path $adrDir)) {
         (Get-ChildItem $adrDir -Filter '*.md' | Select-Object -ExpandProperty Name) -join ', '
     } else { '' }
 
