@@ -61,6 +61,9 @@ function Import-HarnessConfig {
     if ($config['tracker']['type'] -ne 'github') {
         throw "tracker.type must be 'github' (v1 only supports github). Got: '$($config['tracker']['type'])' in $ConfigPath."
     }
+    if ([string]::IsNullOrWhiteSpace($config['tracker']['repo'])) {
+        throw "Missing required config key 'tracker.repo' in $ConfigPath."
+    }
 
     if ($config['defaults'] -isnot [hashtable]) { $config['defaults'] = @{} }
     if (-not $config['defaults']['model']) { $config['defaults']['model'] = 'claude-sonnet-4-6' }

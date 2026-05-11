@@ -42,6 +42,12 @@ setup() {
     [[ "$output" == *"github"* ]]
 }
 
+@test "errors when tracker.repo is missing" {
+    run load_config "$FIXTURES_DIR/missing-tracker-repo.yml"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"tracker.repo"* ]]
+}
+
 @test "applies default agents.plan model and max_turns when not specified" {
     load_config "$FIXTURES_DIR/minimal-config.yml"
     [ "$HARNESS_AGENT_PLAN_MODEL" = "claude-opus-4-7" ]

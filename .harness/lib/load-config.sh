@@ -89,6 +89,10 @@ load_config() {
         echo "ERROR: tracker.type must be 'github' (v1 only supports github). Got: '$HARNESS_TRACKER_TYPE' in $config_path." >&2
         return 1
     fi
+    if [[ -z "$HARNESS_TRACKER_REPO" ]]; then
+        echo "ERROR: Missing required config key 'tracker.repo' in $config_path." >&2
+        return 1
+    fi
 
     HARNESS_DEFAULT_MODEL="${HARNESS_DEFAULT_MODEL:-claude-sonnet-4-6}"
     HARNESS_AGENT_IMPLEMENT_MODEL="${HARNESS_AGENT_IMPLEMENT_MODEL:-claude-sonnet-4-6}"

@@ -41,6 +41,13 @@ Describe 'Import-HarnessConfig' {
             Should -Throw '*github*'
     }
 
+    It 'throws when tracker.repo key is missing' {
+        # run.ps1 calls `gh issue view --repo $cfg.tracker.repo` unconditionally;
+        # surface the missing key here instead of as a confusing gh failure.
+        { Import-HarnessConfig -ConfigPath "$script:Fixtures/missing-tracker-repo.yml" } |
+            Should -Throw '*tracker.repo*'
+    }
+
     It 'applies default agents.implement model and max_turns when not specified' {
         $cfg = Import-HarnessConfig -ConfigPath "$script:Fixtures/minimal-config.yml"
         $cfg.agents.implement.model     | Should -Be 'claude-sonnet-4-6'
