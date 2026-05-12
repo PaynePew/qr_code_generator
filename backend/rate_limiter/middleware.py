@@ -20,7 +20,8 @@ def _get_limiter() -> RateLimiter:
     global _limiter
     if _limiter is None:
         hourly = int(os.environ.get("RATE_LIMIT_HOURLY", "30"))
-        _limiter = RateLimiter(hourly_limit=hourly)
+        daily = int(os.environ.get("RATE_LIMIT_DAILY", "200"))
+        _limiter = RateLimiter(hourly_limit=hourly, daily_limit=daily)
     return _limiter
 
 

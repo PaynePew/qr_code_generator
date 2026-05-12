@@ -31,14 +31,23 @@ def _parse_positive_int(val: str, name: str) -> int:
     return n
 
 
+def _validate_rate_limit_env():
+    _parse_bool(os.environ.get("RATE_LIMIT_ENABLED", "true"), "RATE_LIMIT_ENABLED")
+    hourly = _parse_positive_int(os.environ.get("RATE_LIMIT_HOURLY", "30"), "RATE_LIMIT_HOURLY")
+    daily = _parse_positive_int(os.environ.get("RATE_LIMIT_DAILY", "200"), "RATE_LIMIT_DAILY")
+    if daily < hourly:
+        raise RuntimeError(
+            f"RATE_LIMIT_DAILY ({daily}) must be >= RATE_LIMIT_HOURLY ({hourly})"
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if not os.environ.get("SECRET"):
         raise RuntimeError("SECRET environment variable must be set")
     if not os.environ.get("BASE_URL"):
         raise RuntimeError("BASE_URL environment variable must be set")
-    _parse_bool(os.environ.get("RATE_LIMIT_ENABLED", "true"), "RATE_LIMIT_ENABLED")
-    _parse_positive_int(os.environ.get("RATE_LIMIT_HOURLY", "30"), "RATE_LIMIT_HOURLY")
+    _validate_rate_limit_env()
     Base.metadata.create_all(bind=engine)
     yield
 

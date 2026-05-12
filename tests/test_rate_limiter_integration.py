@@ -131,3 +131,103 @@ def test_fail_open_when_limiter_raises(db_session, monkeypatch):
     app.dependency_overrides.clear()
 
     assert resp.status_code == 200
+
+
+# ──────────────────────────────────────────────
+# Slice 2: dual-window fairness tests
+# ──────────────────────────────────────────────
+
+
+def _dual_window_client(db_session, monkeypatch, *, hourly, daily, clock_list):
+    import backend.rate_limiter.middleware as mw_module
+    from backend.rate_limiter.limiter import RateLimiter
+    from backend.rate_limiter.middleware import RateLimitMiddleware
+
+    monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
+    monkeypatch.setenv("RATE_LIMIT_HOURLY", str(hourly))
+    monkeypatch.setenv("RATE_LIMIT_DAILY", str(daily))
+    RateLimitMiddleware.reset_for_tests()
+
+    limiter = RateLimiter(hourly_limit=hourly, daily_limit=daily, clock=lambda: clock_list[0])
+    monkeypatch.setattr(mw_module, "_limiter", limiter)
+
+    def override_get_db():
+        yield db_session
+
+    app.dependency_overrides[get_db] = override_get_db
+    return TestClient(app, raise_server_exceptions=True)
+
+
+def test_hourly_exhausted_daily_has_slack_reports_hourly_retry_after(db_session, monkeypatch):
+    clock = [0.0]
+    c = _dual_window_client(db_session, monkeypatch, hourly=3, daily=10, clock_list=clock)
+    with c:
+        for _ in range(3):
+            assert _create(c).status_code == 200
+        r = _create(c)
+    app.dependency_overrides.clear()
+
+    assert r.status_code == 429
+    # hourly retry_after ≈ 1201s; daily would be >> 10 000s — confirm hourly bucket triggered
+    assert int(r.headers["retry-after"]) < 2000
+
+
+def test_daily_exhausted_hourly_has_slack_reports_daily_retry_after(db_session, monkeypatch):
+    clock = [0.0]
+    c = _dual_window_client(db_session, monkeypatch, hourly=3, daily=4, clock_list=clock)
+    with c:
+        # exhaust hourly at t=0; daily still has 1 token
+        for _ in range(3):
+            assert _create(c).status_code == 200
+        # advance clock: hourly fully refills, daily barely refills (~1.17 tokens)
+        clock[0] = 3700.0
+        assert _create(c).status_code == 200  # daily→0.17, hourly→2
+        # daily < 1, hourly >= 1 → daily is the triggering bucket
+        r = _create(c)
+    app.dependency_overrides.clear()
+
+    assert r.status_code == 429
+    # daily retry_after >> hourly scale (~1200s)
+    assert int(r.headers["retry-after"]) > 5000
+
+
+def test_clock_advances_past_hourly_daily_still_exhausted_returns_daily_retry_after(
+    db_session, monkeypatch
+):
+    clock = [0.0]
+    # Equal limits are valid (daily >= hourly is satisfied)
+    c = _dual_window_client(db_session, monkeypatch, hourly=3, daily=3, clock_list=clock)
+    with c:
+        for _ in range(3):
+            assert _create(c).status_code == 200
+        # first deny is hourly-triggered (both exhausted, hourly is first in list)
+        assert _create(c).status_code == 429
+        # advance past hourly refill: hourly ≈ 1 token, daily still tiny (<<1)
+        clock[0] = 1201.0
+        r = _create(c)
+    app.dependency_overrides.clear()
+
+    assert r.status_code == 429
+    # daily triggers now (hourly allows); retry_after is daily-scale >> hourly scale
+    assert int(r.headers["retry-after"]) > 5000
+
+
+def test_ratelimit_remaining_reports_min_across_buckets(db_session, monkeypatch):
+    clock = [0.0]
+    c = _dual_window_client(db_session, monkeypatch, hourly=3, daily=5, clock_list=clock)
+    with c:
+        _create(c)  # after: hourly=2, daily=4  → min=2
+        resp = _create(c)  # after: hourly=1, daily=3  → min=1
+    app.dependency_overrides.clear()
+
+    assert resp.status_code == 200
+    assert resp.headers["ratelimit-remaining"] == "1"
+
+
+def test_startup_validation_daily_less_than_hourly_aborts(monkeypatch):
+    from backend.main import _validate_rate_limit_env
+
+    monkeypatch.setenv("RATE_LIMIT_HOURLY", "30")
+    monkeypatch.setenv("RATE_LIMIT_DAILY", "10")
+    with pytest.raises(RuntimeError, match="RATE_LIMIT_DAILY"):
+        _validate_rate_limit_env()
