@@ -3,9 +3,16 @@ from dataclasses import dataclass
 
 from .token_bucket import TokenBucket
 
-# (window_label, period_seconds, limit, refill_rate)
-_WINDOW_HOURLY = ("hourly", 3600)
-_WINDOW_DAILY = ("daily", 86400)
+
+@dataclass(frozen=True)
+class _Window:
+    label: str
+    period_seconds: int
+    limit: int
+
+    @property
+    def refill_rate(self) -> float:
+        return self.limit / self.period_seconds
 
 
 @dataclass
@@ -21,10 +28,9 @@ class CheckResult:
 class RateLimiter:
     def __init__(self, hourly_limit: int, daily_limit: int = 200, clock=None):
         self._hourly_limit = hourly_limit
-        self._daily_limit = daily_limit
-        self._windows = [
-            (_WINDOW_HOURLY[0], _WINDOW_HOURLY[1], hourly_limit, hourly_limit / 3600.0),
-            (_WINDOW_DAILY[0], _WINDOW_DAILY[1], daily_limit, daily_limit / 86400.0),
+        self._windows: list[_Window] = [
+            _Window(label="hourly", period_seconds=3600, limit=hourly_limit),
+            _Window(label="daily", period_seconds=86400, limit=daily_limit),
         ]
         self._ip_buckets: dict[str, list[TokenBucket]] = {}
         self._clock = clock or time.monotonic
@@ -32,12 +38,12 @@ class RateLimiter:
     def _make_fresh_buckets(self, now: float) -> list[TokenBucket]:
         return [
             TokenBucket(
-                capacity=float(limit),
-                refill_rate=rate,
-                tokens=float(limit),
+                capacity=float(w.limit),
+                refill_rate=w.refill_rate,
+                tokens=float(w.limit),
                 last_refill=now,
             )
-            for (_, _, limit, rate) in self._windows
+            for w in self._windows
         ]
 
     def check(self, ip: str) -> CheckResult:
@@ -60,7 +66,7 @@ class RateLimiter:
             consumed = [b.step(now=now, cost=1)[1] for b in refilled]
             self._ip_buckets[ip] = consumed
             remaining = max(0, min(int(b.tokens) for b in consumed))
-            hourly_rate = self._windows[0][3]
+            hourly_rate = self._windows[0].refill_rate
             reset_seconds = int((1.0 / hourly_rate) + 0.5) if hourly_rate > 0 else 3600
             return CheckResult(
                 allowed=True,
@@ -73,10 +79,12 @@ class RateLimiter:
 
         # Deny — store refilled state (no consumption), key Retry-After to triggering bucket
         self._ip_buckets[ip] = refilled
-        _, window_seconds, _, refill_rate = self._windows[deny_idx]
+        triggering = self._windows[deny_idx]
         tokens_needed = 1.0 - refilled[deny_idx].tokens
         retry_after = (
-            int(tokens_needed / refill_rate) + 1 if refill_rate > 0 else window_seconds
+            int(tokens_needed / triggering.refill_rate) + 1
+            if triggering.refill_rate > 0
+            else triggering.period_seconds
         )
         return CheckResult(
             allowed=False,
@@ -88,8 +96,7 @@ class RateLimiter:
         )
 
     def _policy(self) -> str:
-        parts = [f'"{limit};w={window_seconds}"' for (_, window_seconds, limit, _) in self._windows]
-        return ", ".join(parts)
+        return ", ".join(f'"{w.limit};w={w.period_seconds}"' for w in self._windows)
 
     def reset(self):
         self._ip_buckets.clear()
