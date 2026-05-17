@@ -3,6 +3,10 @@ from __future__ import annotations
 from starlette.requests import Request
 
 
+def _client_host(request: Request) -> str | None:
+    return request.client.host if request.client else None
+
+
 def extract_client_ip(request: Request, trusted_proxies: int) -> str | None:
     """Return the best-guess client IP for *request*.
 
@@ -14,15 +18,14 @@ def extract_client_ip(request: Request, trusted_proxies: int) -> str | None:
     Returns None only when neither XFF nor request.client yields an address.
     """
     if trusted_proxies == 0:
-        return request.client.host if request.client else None
+        return _client_host(request)
 
     xff = request.headers.get("x-forwarded-for")
     if not xff:
-        return request.client.host if request.client else None
+        return _client_host(request)
 
     entries = [e.strip() for e in xff.split(",") if e.strip()]
-
     if len(entries) >= trusted_proxies + 1:
         return entries[-(trusted_proxies + 1)]
 
-    return request.client.host if request.client else None
+    return _client_host(request)
