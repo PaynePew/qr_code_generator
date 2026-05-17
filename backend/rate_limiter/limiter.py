@@ -1,6 +1,7 @@
 import logging
 import time
 from dataclasses import dataclass
+from itertools import islice
 
 from .token_bucket import TokenBucket
 
@@ -73,7 +74,7 @@ class RateLimiter:
         """Examine up to _SWEEP_SIZE entries and prune any that have expired."""
         expired = [
             ip
-            for ip, entry in list(self._ip_entries.items())[:_SWEEP_SIZE]
+            for ip, entry in islice(self._ip_entries.items(), _SWEEP_SIZE)
             if (now - entry.last_access) > self._ttl
         ]
         for ip in expired:
