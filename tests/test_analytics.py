@@ -36,7 +36,10 @@ class TestScanLogging:
         scans = db_session.query(Scan).filter(Scan.token == "UNKNOWN1").all()
         assert len(scans) == 0
 
-    def test_scan_ip_from_rightmost_x_forwarded_for(self, client, db_session):
+    def test_scan_ip_uses_extract_client_ip(self, client, db_session, monkeypatch):
+        # With TRUSTED_PROXIES=1 the scan should record the entry one before the
+        # last (trusted) XFF entry, not the rightmost entry (which is the proxy).
+        monkeypatch.setenv("TRUSTED_PROXIES", "1")
         token = client.post("/api/qr/create", json={"url": "https://example.com/scanip"}).json()["token"]
         client.get(
             f"/r/{token}",
@@ -44,7 +47,7 @@ class TestScanLogging:
             headers={"X-Forwarded-For": "1.2.3.4, 5.6.7.8, 9.10.11.12"},
         )
         scan = db_session.query(Scan).filter(Scan.token == token).first()
-        assert scan.ip_address == "9.10.11.12"
+        assert scan.ip_address == "5.6.7.8"
 
     def test_scan_user_agent_captured(self, client, db_session):
         token = client.post("/api/qr/create", json={"url": "https://example.com/scanuа"}).json()["token"]
