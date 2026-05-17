@@ -79,6 +79,15 @@ class RateLimiter:
         for ip in expired:
             self._ip_entries.pop(ip, None)
 
+    def _upsert(self, ip: str, buckets: list[TokenBucket], now: float) -> None:
+        """Store buckets+last_access for ip, preserving any existing deny-log counters."""
+        entry = self._ip_entries.get(ip)
+        if entry is None:
+            self._ip_entries[ip] = _IpEntry(buckets=buckets, last_access=now)
+        else:
+            entry.buckets = buckets
+            entry.last_access = now
+
     def check(self, ip: str) -> CheckResult:
         now = self._clock()
 
@@ -103,12 +112,7 @@ class RateLimiter:
         if deny_idx is None:
             # All allow — consume one token from each
             consumed = [b.step(now=now, cost=1)[1] for b in refilled]
-            self._ip_entries[ip] = _IpEntry(
-                buckets=consumed,
-                last_access=now,
-                deny_count=entry.deny_count if entry else 0,
-                deny_second=entry.deny_second if entry else -1,
-            )
+            self._upsert(ip, consumed, now)
             remaining = max(0, min(int(b.tokens) for b in consumed))
             hourly_rate = self._windows[0].refill_rate
             reset_seconds = int((1.0 / hourly_rate) + 0.5) if hourly_rate > 0 else 3600
@@ -130,12 +134,7 @@ class RateLimiter:
             if triggering.refill_rate > 0
             else triggering.period_seconds
         )
-        self._ip_entries[ip] = _IpEntry(
-            buckets=refilled,
-            last_access=now,
-            deny_count=entry.deny_count if entry else 0,
-            deny_second=entry.deny_second if entry else -1,
-        )
+        self._upsert(ip, refilled, now)
         return CheckResult(
             allowed=False,
             remaining=0,
