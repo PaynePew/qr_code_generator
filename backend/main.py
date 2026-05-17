@@ -1,3 +1,4 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -11,6 +12,8 @@ from .link_state import LinkAlreadyDeletedError, LinkNotFoundError
 from .models import Base
 from .router import router, redirect_router
 from .rate_limiter.middleware import RateLimitMiddleware
+
+_logger = logging.getLogger(__name__)
 
 load_dotenv()
 
@@ -31,6 +34,33 @@ def _parse_positive_int(val: str, name: str) -> int:
     return n
 
 
+def _detect_worker_count() -> int:
+    """Best-effort worker count from well-known environment variables."""
+    for var in ("WEB_CONCURRENCY", "UVICORN_WORKERS"):
+        val = os.environ.get(var, "").strip()
+        if val:
+            try:
+                n = int(val)
+                if n > 0:
+                    return n
+            except ValueError:
+                pass
+    return 1
+
+
+def _maybe_warn_multi_worker() -> None:
+    """Emit a WARNING if the environment suggests more than one worker process."""
+    workers = _detect_worker_count()
+    if workers > 1:
+        _logger.warning(
+            "In-memory rate limiter is per-process: %d workers detected means the "
+            "effective per-IP limit is %d× the configured value. Replace the storage "
+            "layer before using multi-worker deploys (see ADR 0007).",
+            workers,
+            workers,
+        )
+
+
 def _validate_rate_limit_env():
     _parse_bool(os.environ.get("RATE_LIMIT_ENABLED", "true"), "RATE_LIMIT_ENABLED")
     hourly = _parse_positive_int(os.environ.get("RATE_LIMIT_HOURLY", "30"), "RATE_LIMIT_HOURLY")
@@ -48,6 +78,7 @@ async def lifespan(app: FastAPI):
     if not os.environ.get("BASE_URL"):
         raise RuntimeError("BASE_URL environment variable must be set")
     _validate_rate_limit_env()
+    _maybe_warn_multi_worker()
     Base.metadata.create_all(bind=engine)
     yield
 

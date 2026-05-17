@@ -1,9 +1,10 @@
 import itertools
+import logging
 
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.main import app
+from backend.main import _maybe_warn_multi_worker, app
 from backend.router import get_db
 
 _counter = itertools.count(1)
@@ -231,3 +232,45 @@ def test_startup_validation_daily_less_than_hourly_aborts(monkeypatch):
     monkeypatch.setenv("RATE_LIMIT_DAILY", "10")
     with pytest.raises(RuntimeError, match="RATE_LIMIT_DAILY"):
         _validate_rate_limit_env()
+
+
+# ── Multi-worker startup warning (AC 5) ─────────────────────────────────────
+
+
+def test_multi_worker_startup_warning_emitted_when_web_concurrency_gt_1(monkeypatch, caplog):
+    """WARNING is emitted at startup when WEB_CONCURRENCY > 1."""
+    monkeypatch.setenv("WEB_CONCURRENCY", "4")
+    monkeypatch.delenv("UVICORN_WORKERS", raising=False)
+
+    with caplog.at_level(logging.WARNING):
+        _maybe_warn_multi_worker()
+
+    warning_msgs = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("worker" in m.lower() for m in warning_msgs)
+
+
+def test_multi_worker_startup_warning_emitted_when_uvicorn_workers_gt_1(monkeypatch, caplog):
+    """WARNING is emitted at startup when UVICORN_WORKERS > 1."""
+    monkeypatch.delenv("WEB_CONCURRENCY", raising=False)
+    monkeypatch.setenv("UVICORN_WORKERS", "2")
+
+    with caplog.at_level(logging.WARNING):
+        _maybe_warn_multi_worker()
+
+    warning_msgs = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    assert any("worker" in m.lower() for m in warning_msgs)
+
+
+def test_no_multi_worker_warning_for_single_worker(monkeypatch, caplog):
+    """No WARNING is emitted when no multi-worker env var is set."""
+    monkeypatch.delenv("WEB_CONCURRENCY", raising=False)
+    monkeypatch.delenv("UVICORN_WORKERS", raising=False)
+
+    with caplog.at_level(logging.WARNING):
+        _maybe_warn_multi_worker()
+
+    worker_warnings = [
+        r for r in caplog.records
+        if r.levelno == logging.WARNING and "worker" in r.getMessage().lower()
+    ]
+    assert len(worker_warnings) == 0

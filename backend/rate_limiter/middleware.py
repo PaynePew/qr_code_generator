@@ -61,9 +61,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         if not result.allowed:
-            logger.warning(
-                "rate_limiter.denied ip=%s limit=%d retry_after=%d path=%s",
-                ip, result.limit, result.retry_after_seconds, _TARGET_PATH,
+            _get_limiter().log_denied(
+                ip, result.deny_bucket, result.limit, result.retry_after_seconds, _TARGET_PATH
             )
             return JSONResponse(
                 content={"detail": "Rate limit exceeded"},
