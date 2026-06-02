@@ -34,6 +34,16 @@ def _parse_positive_int(val: str, name: str) -> int:
     return n
 
 
+def _parse_non_negative_int(val: str, name: str) -> int:
+    try:
+        n = int(val)
+    except ValueError:
+        raise RuntimeError(f"{name} must be an integer, got: {val!r}")
+    if n < 0:
+        raise RuntimeError(f"{name} must be a non-negative integer, got: {n}")
+    return n
+
+
 def _detect_worker_count() -> int:
     """Best-effort worker count from well-known environment variables."""
     for var in ("WEB_CONCURRENCY", "UVICORN_WORKERS"):
@@ -71,6 +81,10 @@ def _validate_rate_limit_env():
         )
 
 
+def _validate_trusted_proxies_env():
+    _parse_non_negative_int(os.environ.get("TRUSTED_PROXIES", "0"), "TRUSTED_PROXIES")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     if not os.environ.get("SECRET"):
@@ -78,6 +92,7 @@ async def lifespan(app: FastAPI):
     if not os.environ.get("BASE_URL"):
         raise RuntimeError("BASE_URL environment variable must be set")
     _validate_rate_limit_env()
+    _validate_trusted_proxies_env()
     _maybe_warn_multi_worker()
     Base.metadata.create_all(bind=engine)
     yield

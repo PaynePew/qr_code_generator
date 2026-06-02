@@ -11,10 +11,12 @@ _counter = itertools.count(1)
 
 
 def _create(client, *, ip="1.2.3.4"):
+    # Send "ip, testproxy" so that with TRUSTED_PROXIES=1 the rate-limiter
+    # resolves to `ip` (entries[-2]) rather than falling back to "testclient".
     return client.post(
         "/api/qr/create",
         json={"url": f"https://example.com/p{next(_counter)}"},
-        headers={"x-forwarded-for": ip},
+        headers={"x-forwarded-for": f"{ip}, testproxy"},
     )
 
 
@@ -22,6 +24,7 @@ def _create(client, *, ip="1.2.3.4"):
 def rate_limiter_enabled(monkeypatch):
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
     monkeypatch.setenv("RATE_LIMIT_HOURLY", "3")
+    monkeypatch.setenv("TRUSTED_PROXIES", "1")
 
 
 @pytest.fixture
@@ -72,6 +75,7 @@ def test_clock_advance_unlocks_one_more_request(db_session, monkeypatch):
 
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
     monkeypatch.setenv("RATE_LIMIT_HOURLY", "3")
+    monkeypatch.setenv("TRUSTED_PROXIES", "1")
     RateLimitMiddleware.reset_for_tests()
 
     clock_time = [0.0]
@@ -147,6 +151,7 @@ def _dual_window_client(db_session, monkeypatch, *, hourly, daily, clock_list):
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
     monkeypatch.setenv("RATE_LIMIT_HOURLY", str(hourly))
     monkeypatch.setenv("RATE_LIMIT_DAILY", str(daily))
+    monkeypatch.setenv("TRUSTED_PROXIES", "1")
     RateLimitMiddleware.reset_for_tests()
 
     limiter = RateLimiter(hourly_limit=hourly, daily_limit=daily, clock=lambda: clock_list[0])
@@ -232,6 +237,29 @@ def test_startup_validation_daily_less_than_hourly_aborts(monkeypatch):
     monkeypatch.setenv("RATE_LIMIT_DAILY", "10")
     with pytest.raises(RuntimeError, match="RATE_LIMIT_DAILY"):
         _validate_rate_limit_env()
+
+
+def test_startup_validation_trusted_proxies_negative_aborts(monkeypatch):
+    from backend.main import _validate_trusted_proxies_env
+
+    monkeypatch.setenv("TRUSTED_PROXIES", "-1")
+    with pytest.raises(RuntimeError, match="TRUSTED_PROXIES"):
+        _validate_trusted_proxies_env()
+
+
+def test_startup_validation_trusted_proxies_non_integer_aborts(monkeypatch):
+    from backend.main import _validate_trusted_proxies_env
+
+    monkeypatch.setenv("TRUSTED_PROXIES", "two")
+    with pytest.raises(RuntimeError, match="TRUSTED_PROXIES"):
+        _validate_trusted_proxies_env()
+
+
+def test_startup_validation_trusted_proxies_zero_is_valid(monkeypatch):
+    from backend.main import _validate_trusted_proxies_env
+
+    monkeypatch.setenv("TRUSTED_PROXIES", "0")
+    _validate_trusted_proxies_env()  # must not raise
 
 
 # ── Multi-worker startup warning (AC 5) ─────────────────────────────────────

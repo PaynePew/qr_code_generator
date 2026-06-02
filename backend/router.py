@@ -16,6 +16,7 @@ from .models import Link
 from .token_generator import TokenCollisionError
 from .url_validator import validate_and_normalize, InvalidURLError
 from .qr_generator import generate_qr_png
+from .rate_limiter.ip_extraction import extract_client_ip
 
 router = APIRouter(prefix="/api")
 redirect_router = APIRouter()
@@ -40,13 +41,6 @@ def _now_utc() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
-def _client_ip(request: Request) -> Optional[str]:
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        return xff.split(",")[-1].strip()
-    return request.client.host if request.client else None
-
-
 def _link_response(link: Link, base_url: str, state: LinkState) -> dict:
     return {
         "token": link.token,
@@ -61,12 +55,13 @@ def _link_response(link: Link, base_url: str, state: LinkState) -> dict:
 
 
 def _log_scan(db: Session, token: str, status_code: int, request: Request):
+    trusted_proxies = int(os.environ.get("TRUSTED_PROXIES", "0"))
     scan_repository.record_scan(
         db,
         token=token,
         scanned_at=_now_utc(),
         status_code=status_code,
-        ip_address=_client_ip(request),
+        ip_address=extract_client_ip(request, trusted_proxies),
         user_agent=request.headers.get("user-agent"),
     )
 

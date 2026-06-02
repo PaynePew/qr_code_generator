@@ -6,6 +6,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from .ip_extraction import extract_client_ip
 from .limiter import CheckResult, RateLimiter
 
 logger = logging.getLogger(__name__)
@@ -29,13 +30,6 @@ def _is_enabled() -> bool:
     return os.environ.get("RATE_LIMIT_ENABLED", "true").lower() == "true"
 
 
-def _client_ip(request: Request) -> Optional[str]:
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        return xff.split(",")[-1].strip()
-    return request.client.host if request.client else None
-
-
 def _ratelimit_headers(result: CheckResult) -> dict[str, str]:
     return {
         "RateLimit-Limit": str(result.limit),
@@ -53,7 +47,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if not _is_enabled():
             return await call_next(request)
 
-        ip = _client_ip(request) or "unknown"
+        trusted_proxies = int(os.environ.get("TRUSTED_PROXIES", "0"))
+        ip = extract_client_ip(request, trusted_proxies) or "unknown"
         try:
             result = _get_limiter().check(ip)
         except Exception:
