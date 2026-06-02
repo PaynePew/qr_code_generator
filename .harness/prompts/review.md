@@ -65,9 +65,50 @@ If you find improvements to make:
 
 1. Make changes directly on `{{BRANCH}}`.
 2. Run tests + typecheck after each meaningful change.
-3. Commit with `refactor:` prefix and a clear message. One logical change per commit.
+3. **Commit immediately after each fix** with a `refactor:` Conventional-Commits prefix and a clear message. One logical change per commit. **Do NOT batch multiple fixes into one final commit** — see "Turn-budget discipline" below; this is the rule reviewers most reliably violate.
 
 If the code is already clean and well-structured, do nothing.
+
+# TURN-BUDGET DISCIPLINE (CRITICAL — read carefully)
+
+The wrapper enforces a maximum number of tool-call turns. **Uncommitted edits on disk are invisible to the orchestrator** — if you run out of turns mid-flow, every fix you wrote but didn't commit is lost. This has actually happened on this project (review-2 wrote a complete, ruff-clean type-annotation fix and ran out of turns at the `git commit` step).
+
+Apply these rules without exception:
+
+1. **Commit each fix the moment it's clean.** Workflow: identify one issue → edit → run ruff/tests → `git add` + `git commit` → next issue. Never accumulate multiple fixes hoping to commit them as a batch at the end.
+
+2. **If you find more issues than you have budget for, FLAG them instead of fixing.** It is far better to:
+   - Make 2 fixes that get committed + flag 3 issues for the human
+   
+   than to:
+   - Edit 5 fixes in the working tree, run out of turns at commit step, lose all 5.
+   
+   When in doubt, prefer the "Concerns flagged for human" section over making the change.
+
+3. **Reserve turns for the closing report.** The `gh issue comment` step at the end is mandatory and takes 1–2 turns. Stop new fix work well before you exhaust the budget.
+
+4. **No `git commit --amend`, no rebase.** Each fix is its own commit — this is also how the orchestrator can resume cleanly if your run gets cut short partway through.
+
+# FACTUAL DISCIPLINE (CRITICAL — read carefully)
+
+Your review report becomes the authoritative human-facing summary of this branch's state. Wrong claims in the report — especially about what files exist, what tests pass, or what the diff contains — mislead the human reviewer and can cause incorrect merge decisions. This has actually happened: a previous review reported `app/actions/base.py / echo.py / registry.py` as "existing but incomplete" because it had read those filenames in the slice spec — but those files were not actually on the branch.
+
+Before making any claim about the working tree state, **verify it against the working tree, not against memory, not against the issue body, not against spec documents**:
+
+1. **Claims about file existence MUST be verified via `git ls-files <path>` or `ls <path>` first.**
+   - ❌ Bad: "The existing `app/actions/{base,echo,registry}.py` scaffolding is incomplete but out of scope."
+     (Source of the error: the slice spec or another issue's body mentioned these files. They do not exist on this branch.)
+   - ✅ Good: Run `git ls-files app/actions/` first. If only `__init__.py` is tracked, say: "`app/actions/` currently contains only an empty `__init__.py`; the handler / registry files referenced in slice S03's spec are not yet present on this branch."
+
+2. **Claims about test results MUST cite the command and the exit code.** Use the commands declared in `{{TESTS_BLOCK}}` and `{{TYPECHECK_BLOCK}}`. Run the full suite, not just the tests the implementer added — past PRs have shipped with regressions in code paths the author thought were isolated. If a check fails and the diff is responsible, fix it (within turn budget) or flag it in "Concerns" — never silently omit the result from the report.
+
+   If the venv / node_modules was broken and you could not actually execute the tests, say *that* — never summarise what you *expect* the tests would have done.
+
+3. **Claims about the diff MUST be verified via `git diff` / `git show`.** Don't describe what the implementer *probably* did based on the issue body — look at what they actually committed.
+
+4. **If you cannot verify a claim, omit it.** A shorter report with high-confidence claims is more valuable than a long report with mixed-confidence claims. The "Concerns flagged for human" section should not contain speculation.
+
+The spec describes the target state; the working tree is the actual state. Your job is to compare the two, not to confuse them.
 
 # COMPLETION
 
@@ -98,6 +139,6 @@ Output `<promise>COMPLETE</promise>` and exit.
 
 # HARD RULES
 
-- Do NOT push, do NOT modify `{{TARGET_BRANCH}}`, do NOT close the issue, do NOT touch `.harness/`, `.sandcastle/`, `.claude/`.
+- Do NOT push, do NOT modify `{{TARGET_BRANCH}}`, do NOT close the issue, do NOT touch `.harness/` or `.claude/`.
 - Do NOT introduce new features or expand scope. Flag anything missing for the human.
 - Do NOT rewrite history (`git rebase`, `git commit --amend` are forbidden). Add new commits only.

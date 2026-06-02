@@ -2,6 +2,10 @@
 
 A Docker-based runner that drives `claude` against a GitHub issue tracker using your **Claude subscription** (not an API key). One terminal, one issue at a time, four phases: plan → implement → review → merge.
 
+**Heritage:** a simplified, single-operator take on the **sandcastle** harness pattern. We kept the four-phase loop and the Docker-bind-mount-per-phase model; dropped the daemon, shared queue, and `state.json`. Use sandcastle if you need queues, dashboards, or multi-tenant orchestration. Use this if you want *one terminal, one issue, one PR*.
+
+**Recommended pairing:** install [mattpocock/skills](https://github.com/mattpocock/skills) into your target project's `.claude/skills/` so the implement and review agents have battle-tested skills available during runs.
+
 **Design rationale:** lives in the ADR/PRD of the repo that hosts this harness. <!-- TODO: link your own PRD / ADR here -->
 
 ---
@@ -27,6 +31,48 @@ $env:CLAUDE_CODE_OAUTH_TOKEN = '<token>'
 ```
 
 The token is a long-lived value from your Claude subscription account. It reaches the container via environment variable — never embedded in a `docker run` argument — so it does not appear in the host process listing.
+
+---
+
+## Install into your project
+
+This repo is the harness *source*. It is designed to live at **`.harness/`** inside your target project. Pick one integration style:
+
+### Option A — git submodule (recommended; versioned, easy upgrades)
+
+```powershell
+git submodule add https://github.com/PaynePew/kanban-harness.git .harness
+git -C .harness checkout v0.1.0    # pin to a release tag
+git submodule update --init --recursive
+```
+
+Upgrade later with `git -C .harness fetch --tags && git -C .harness checkout v0.2.0`.
+
+### Option B — git subtree (vendor in-tree, no submodule pointers)
+
+```powershell
+git remote add harness https://github.com/PaynePew/kanban-harness.git
+git fetch harness --tags
+git subtree add --prefix=.harness harness v0.1.0 --squash
+```
+
+### Option C — plain clone (simplest, not version-locked)
+
+```powershell
+git clone https://github.com/PaynePew/kanban-harness.git .harness
+Add-Content .gitignore ".harness/"
+```
+
+### Then, regardless of option
+
+```powershell
+Copy-Item .harness/config.yml.example         .harness/config.yml
+Copy-Item .harness/CODING_STANDARDS.md.example .harness/CODING_STANDARDS.md
+Copy-Item .harness/.env.local.example          .harness/.env.local
+# edit all three for your project; .env.local and the two copies are gitignored
+```
+
+> **Why `.harness/`?** All scripts resolve paths relative to themselves (`$PSScriptRoot`), so the directory name is not load-bearing — but every example in this README assumes `.harness/`. Keeping the name consistent across projects also makes it easy to grep for harness invocations.
 
 ---
 
@@ -145,7 +191,12 @@ If you want to run a specific issue without going through the plan phase:
 pwsh ./.harness/run.ps1 -Issue 42
 ```
 
-The plan phase deconflicts against local branches and open PRs, so a second terminal that runs plan will never pick an issue another terminal has claimed. If you skip plan (`-Issue N` directly), the branch-claim is still atomic: `git checkout -b` fails fast if the branch already exists.
+The plan phase deconflicts against local branches and open PRs, so a second terminal that runs plan will never pick an issue another terminal has claimed. If you skip plan (`-Issue N` directly), parallel-safety is enforced by a per-issue lock file at `.harness/locks/issue-N.lock`: a second terminal trying the same issue is rejected with the holder's PID + branch + phase. Each issue also gets its own `git worktree` at `.harness/worktrees/issue-N/`, so two terminals working on *different* issues never see each other's in-flight files.
+
+Recovery flags:
+- `-Resume`           — attach to an existing worktree+branch for the issue (lock auto-takes from the dead PID of the previous run).
+- `-Force`            — override a live-PID lock (only use if you really know what the other process is doing).
+- `-Cleanup N`        — remove the worktree + lock for issue `N` without running any phase. Use when a slice was abandoned (PR closed, branch deleted upstream).
 
 ---
 
@@ -274,7 +325,8 @@ If a hook did not fire:
 | Path | Purpose |
 |---|---|
 | `Dockerfile` | Node 22 + Python 3 + git + gh + claude CLI; user `agent` (UID 1000). |
-| `config.yml` | Per-project config (image tag, branch prefix, tracker, models, test commands). |
+| `config.yml` | Per-project config (image tag, branch prefix, tracker, models, test commands). Copy from `config.yml.example`. |
+| `CODING_STANDARDS.md` | Injected into the review prompt as `{{CODING_STANDARDS_BLOCK}}`. Copy from `CODING_STANDARDS.md.example`. |
 | `run.ps1` | Entry point — Windows/PowerShell. Full four-phase pipeline. |
 | `run.sh` | Entry point — Linux/macOS/CI. Plan + implement. |
 | `lib/*.{ps1,sh}` | Pure-function modules mirrored across PS and bash. |
@@ -282,3 +334,5 @@ If a hook did not fire:
 | `tests/` | Pester (`.Tests.ps1`) and bats (`.bats`) coverage for every `lib/` module. |
 | `.env.local` | OAuth token override (gitignored). Copy from `.env.local.example`. |
 | `logs/` | Per-run container stdout (gitignored except `.gitkeep`). |
+| `CHANGELOG.md` | Versioned release notes. Pin downstream consumers to a tag. |
+| `LICENSE` | MIT. See file for upstream attribution to sandcastle. |

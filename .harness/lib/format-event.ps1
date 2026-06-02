@@ -34,19 +34,35 @@ function Format-SystemInit {
 
 function Format-RateLimit {
     param([hashtable]$Event)
+    if (-not $Event.ContainsKey('rate_limit_info')) { return $null }
     $info = $Event.rate_limit_info
-    if (-not $info) { return $null }
+    if (-not $info -or $info -isnot [hashtable]) { return $null }
 
-    $util       = [int]([double]$info.utilization * 100)
-    $threshold  = [int]([double]$info.surpassedThreshold * 100)
-    $window     = ($info.rateLimitType -replace '_', '-')
-    $resetEpoch = [int64]$info.resetsAt
-    $resetUtc   = [DateTimeOffset]::FromUnixTimeSeconds($resetEpoch).UtcDateTime.ToString('yyyy-MM-dd HH:mm')
+    # New Claude format (2025+): { status, resetsAt, rateLimitType, overageStatus, isUsingOverage, ... }
+    # Legacy format had: { utilization, surpassedThreshold, status, rateLimitType, resetsAt }
+    # Handle both — missing keys default to neutral values rather than throwing under strict mode.
+    $window     = if ($info.ContainsKey('rateLimitType')) { ($info.rateLimitType -replace '_', '-') } else { 'unknown' }
+    $resetUtc   = if ($info.ContainsKey('resetsAt')) {
+        try { [DateTimeOffset]::FromUnixTimeSeconds([int64]$info.resetsAt).UtcDateTime.ToString('yyyy-MM-dd HH:mm') }
+        catch { 'unknown' }
+    } else { 'unknown' }
+    $status     = if ($info.ContainsKey('status')) { [string]$info.status } else { '' }
 
-    $marker = if ($info.status -eq 'allowed_warning') { '[⚠ RATE]' } else { '[RATE]  ' }
+    $marker = if ($status -eq 'allowed_warning' -or $status -eq 'exceeded') { '[⚠ RATE]' } else { '[RATE]  ' }
 
+    if ($info.ContainsKey('utilization') -and $info.ContainsKey('surpassedThreshold')) {
+        # Legacy format with usage percentage.
+        $util       = [int]([double]$info.utilization * 100)
+        $threshold  = [int]([double]$info.surpassedThreshold * 100)
+        return @(
+            "$marker  $window window: $util% used (>$threshold% warning)"
+            "          resets $resetUtc UTC"
+        )
+    }
+
+    # New format — no percentage; surface status + reset time.
     return @(
-        "$marker  $window window: $util% used (>$threshold% warning)"
+        "$marker  $window window: status=$status"
         "          resets $resetUtc UTC"
     )
 }

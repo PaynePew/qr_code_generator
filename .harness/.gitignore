@@ -5,3 +5,6 @@ logs/*
 !logs/.gitkeep
 config.yml
 CODING_STANDARDS.md
+# Per-issue worktrees + lock files — runtime state, not source.
+worktrees/
+locks/

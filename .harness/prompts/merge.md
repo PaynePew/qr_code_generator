@@ -10,7 +10,7 @@ Push the branch to origin and open a pull request. Comment on the issue with the
 
 ```bash
 git status
-git log origin/main..HEAD --oneline
+git log origin/{{TARGET_BRANCH}}..HEAD --oneline
 ```
 
 ## Issue details
@@ -50,7 +50,7 @@ git push -u origin {{BRANCH}}
 Collect the commit summary and reviewer notes from the issue comments, then open the PR:
 
 ```bash
-gh pr create --repo {{REPO}} --head {{BRANCH}} --base main --fill --body "$(cat <<'PRBODY'
+gh pr create --repo {{REPO}} --head {{BRANCH}} --base {{TARGET_BRANCH}} --fill --body "$(cat <<'PRBODY'
 Closes #{{ISSUE}}
 
 ## Commit summary
@@ -84,8 +84,8 @@ Output `<promise>COMPLETE</promise>` and exit.
 
 # HARD RULES
 
-- Do NOT run `git merge` to main.
-- Do NOT run `git checkout main`.
+- Do NOT run `git merge` to `{{TARGET_BRANCH}}`.
+- Do NOT run `git checkout {{TARGET_BRANCH}}`.
 - Do NOT run `gh issue close`.
 - Do NOT set `--auto-merge`.
 - Do NOT squash or rebase commits.

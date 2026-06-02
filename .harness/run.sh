@@ -7,6 +7,7 @@
 #   ./.harness/run.sh --yes            # plan + auto-confirm + implement top candidate
 #   ./.harness/run.sh --smoke-test
 #   ./.harness/run.sh --issue 28
+#   ./.harness/run.sh --issue 28 --resume   # resume after rate-limit / crash
 set -euo pipefail
 
 HARNESS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -24,6 +25,8 @@ source "$HARNESS_ROOT/lib/heartbeat.sh"
 source "$HARNESS_ROOT/lib/parse-plan.sh"
 # shellcheck source=lib/scan-deconflict.sh
 source "$HARNESS_ROOT/lib/scan-deconflict.sh"
+# shellcheck source=lib/branch-claim.sh
+source "$HARNESS_ROOT/lib/branch-claim.sh"
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -40,6 +43,7 @@ step() { printf '\e[36m── %s \e[90m%s\e[0m\n' "$1" "$(printf '%.0s─' {1..4
 SMOKE_TEST=false
 PLAN_ONLY=false
 AUTO_YES=false
+RESUME=false
 ISSUE_NUMBER=""
 
 while [[ $# -gt 0 ]]; do
@@ -47,8 +51,9 @@ while [[ $# -gt 0 ]]; do
         --smoke-test) SMOKE_TEST=true ;;
         --plan)       PLAN_ONLY=true ;;
         --yes)        AUTO_YES=true ;;
+        --resume)     RESUME=true ;;
         --issue)      shift; ISSUE_NUMBER="$1" ;;
-        *) fail "Unknown argument: $1. Use --smoke-test, --plan, --yes, or --issue N." ;;
+        *) fail "Unknown argument: $1. Use --smoke-test, --plan, --yes, --resume, or --issue N." ;;
     esac
     shift
 done
@@ -227,16 +232,45 @@ fi
 
 # ── Select and render prompt (smoke-test / implement) ─────────────────────────
 
+BRANCH_NAME=""
+
 if $SMOKE_TEST; then
     PROMPT_FILE="$HARNESS_ROOT/prompts/smoke-test.md"
     LOG_FILE="$HARNESS_ROOT/logs/smoke-test.log"
     RUN_LABEL="smoke-test"
     RENDERED=$(render_prompt "$(cat "$PROMPT_FILE")")
 else
+    # Derive kebab slug from issue title, then atomically claim the branch.
+    step 'Claiming branch'
+    ISSUE_TITLE=$(gh issue view "$ISSUE_NUMBER" --repo "$HARNESS_TRACKER_REPO" --json title --jq '.title' 2>&1) \
+        || fail "gh issue view #$ISSUE_NUMBER failed: $ISSUE_TITLE"
+    SLUG=$(printf '%s' "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]' \
+        | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//' | cut -c1-40 | sed -E 's/-+$//')
+    [[ -n "$SLUG" ]] || fail "Could not derive slug from issue #$ISSUE_NUMBER title: '$ISSUE_TITLE'"
+
+    if ! BRANCH_NAME=$(invoke_branch_claim "$HARNESS_BRANCH_PREFIX" "$ISSUE_NUMBER" "$SLUG" "$RESUME"); then
+        fail "Branch claim failed for issue #$ISSUE_NUMBER (see error above)" "./.harness/run.sh --issue $ISSUE_NUMBER --resume"
+    fi
+    echo "  Branch: $BRANCH_NAME"
+
+    # Target branch (default branch of the repo) — used by implement/review/merge
+    # prompts so non-`main` repos work. Fall back to "main" if HEAD is unset.
+    TARGET_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD --short 2>/dev/null || echo origin/main)
+    TARGET_BRANCH="${TARGET_BRANCH#origin/}"
+
     PROMPT_FILE="$HARNESS_ROOT/prompts/implement.md"
     LOG_FILE="$HARNESS_ROOT/logs/issue-${ISSUE_NUMBER}.log"
     RUN_LABEL="issue-${ISSUE_NUMBER}"
-    RENDERED=$(render_prompt "$(cat "$PROMPT_FILE")" "ISSUE_NUMBER=$ISSUE_NUMBER")
+    RENDERED=$(render_prompt "$(cat "$PROMPT_FILE")" \
+        "ISSUE=$ISSUE_NUMBER" \
+        "BRANCH=$BRANCH_NAME" \
+        "TARGET_BRANCH=$TARGET_BRANCH" \
+        "DOCS_PRD_DIR=${HARNESS_DOCS_PRD_DIR:-}" \
+        "DOCS_CONTEXT=${HARNESS_DOCS_CONTEXT:-}" \
+        "DOCS_ADR_DIR=${HARNESS_DOCS_ADR_DIR:-}" \
+        "TESTS_BLOCK=${HARNESS_TESTS_BLOCK:-}" \
+        "TYPECHECK_BLOCK=${HARNESS_TYPECHECK_BLOCK:-}" \
+        "COMMIT_STYLE=${HARNESS_COMMIT_STYLE:-}")
 fi
 
 [[ -f "$PROMPT_FILE" ]] || fail "Prompt file not found: $PROMPT_FILE"
@@ -253,12 +287,19 @@ mkdir -p "$(dirname "$LOG_FILE")"
 
 # Pass the token by reference (no `=value`) so it doesn't appear in
 # the host process listing. Docker reads it from our environment.
+if $SMOKE_TEST; then
+    CLAUDE_CMD='claude --permission-mode bypassPermissions -p "$(cat /workspace/.harness/.current-prompt.md)"'
+else
+    CLAUDE_CMD="claude --permission-mode bypassPermissions --model $HARNESS_AGENT_IMPLEMENT_MODEL --max-turns $HARNESS_AGENT_IMPLEMENT_MAX_TURNS -p \"\$(cat /workspace/.harness/.current-prompt.md)\""
+fi
+
 docker run --rm \
     --volume "${REPO_ROOT}:/workspace" \
     --env    CLAUDE_CODE_OAUTH_TOKEN \
+    --env    GH_TOKEN \
     --workdir /workspace \
     "$IMAGE_NAME" \
-    bash -lc 'claude -p "$(cat /workspace/.harness/.current-prompt.md)"' \
+    bash -lc "$CLAUDE_CMD" \
     2>&1 | tee "$LOG_FILE"
 
 EXIT_CODE="${PIPESTATUS[0]}"

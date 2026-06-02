@@ -29,6 +29,17 @@ function Invoke-ParsePlan {
         }
     }
 
+    # Normalize optional collections so downstream `.Count` access is safe.
+    # JSON `null` (or any non-array value) becomes @() — the caller treats
+    # both "absent" and "empty" the same way.
+    foreach ($key in @('alternatives', 'blocked')) {
+        if ($null -eq $plan[$key]) {
+            $plan[$key] = @()
+        } elseif ($plan[$key] -isnot [array] -and $plan[$key] -isnot [System.Collections.IList]) {
+            return @{ Error = "'$key' must be an array (or null) in plan JSON, got: $($plan[$key].GetType().Name)" }
+        }
+    }
+
     $top = $plan.top
     if ($top -isnot [hashtable]) {
         return @{ Error = "'top' must be an object in plan JSON." }

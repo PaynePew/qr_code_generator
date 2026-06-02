@@ -73,7 +73,13 @@ load_config() {
     HARNESS_AGENT_IMPLEMENT_MAX_TURNS=$(_yaml_deep "$config_path" "agents" "implement" "max_turns")
     HARNESS_AGENT_PLAN_MODEL=$(_yaml_deep "$config_path" "agents" "plan" "model")
     HARNESS_AGENT_PLAN_MAX_TURNS=$(_yaml_deep "$config_path" "agents" "plan" "max_turns")
+    HARNESS_DOCS_PRD_DIR=$(_yaml_nested "$config_path" "docs" "prd_dir")
+    HARNESS_DOCS_CONTEXT=$(_yaml_nested "$config_path" "docs" "context")
     HARNESS_DOCS_ADR_DIR=$(_yaml_nested "$config_path" "docs" "adr_dir")
+    # Flat-format only on bash. PS supports named-sub-entries with `when:` predicates.
+    HARNESS_TESTS_BLOCK=$(_yaml_nested "$config_path" "tests" "block")
+    HARNESS_TYPECHECK_BLOCK=$(_yaml_nested "$config_path" "typecheck" "block")
+    HARNESS_COMMIT_STYLE=$(_yaml_nested "$config_path" "commit" "style")
 
     if [[ -z "$HARNESS_IMAGE" ]]; then
         echo "ERROR: Missing required config key 'image' in $config_path." >&2
@@ -106,5 +112,6 @@ load_config() {
            HARNESS_DEFAULT_MODEL \
            HARNESS_AGENT_IMPLEMENT_MODEL HARNESS_AGENT_IMPLEMENT_MAX_TURNS \
            HARNESS_AGENT_PLAN_MODEL HARNESS_AGENT_PLAN_MAX_TURNS \
-           HARNESS_DOCS_ADR_DIR
+           HARNESS_DOCS_PRD_DIR HARNESS_DOCS_CONTEXT HARNESS_DOCS_ADR_DIR \
+           HARNESS_TESTS_BLOCK HARNESS_TYPECHECK_BLOCK HARNESS_COMMIT_STYLE
 }

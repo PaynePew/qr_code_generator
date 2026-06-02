@@ -39,9 +39,12 @@ function Get-DeconflictExclusions {
 
     if ($GhPrListJson) {
         try {
-            $prs = $GhPrListJson | ConvertFrom-Json
+            $prs = @($GhPrListJson | ConvertFrom-Json)  # @() forces array even for single PR
             foreach ($pr in $prs) {
-                if ($pr.headRefName -match $pattern) {
+                # Use PSObject property bag lookup so a missing field returns $null
+                # instead of throwing under StrictMode Latest.
+                $headRef = $pr.PSObject.Properties['headRefName']
+                if ($headRef -and $headRef.Value -match $pattern) {
                     [void]$excluded.Add([int]$Matches[1])
                 }
             }

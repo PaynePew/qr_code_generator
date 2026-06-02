@@ -1,24 +1,17 @@
-# Generic agent harness — base image
+# Project-customised agent harness — qr_code_generator
 #
-# Toolchain every project we've seen needs:
-# - Node 22 LTS (also a hard dependency of the claude CLI install)
-# - Python 3 + pip (for projects that use it)
-# - git, gh CLI, jq (VCS + GitHub API + JSON wrangling)
-# - claude CLI (the agent runtime; uses OAuth via env var)
+# Forked from kanban-harness v0.1.1 (upstream sha 90fb5fb).
+# This project uses plain pip + SQLite + Vite, so we keep the base image
+# minimal: just the toolchains the prompts actually invoke.
 #
-# Project-level dependencies (npm install / pip install -r requirements.txt /
-# go mod download / etc.) are NOT baked in. The orchestrator runs them
-# per-container on startup so the image stays generic across projects.
-# Add language-specific toolchains by extending this file in your project's
-# fork or by maintaining a project-specific Dockerfile that FROMs this one.
+# Why no `uv`:
+#   The backend uses pip + requirements.txt (see /requirements.txt at repo
+#   root) — `pytest` is invoked directly, no `uv run` wrapper.
 #
-# Patterns adopted from .sandcastle/Dockerfile:
-#   - Rename the base image's `node` user (UID 1000) to `agent` instead of
-#     creating a new one — keeps UID 1000 stable for bind-mount ownership.
-#   - PIP_BREAK_SYSTEM_PACKAGES=1 so per-run pip install hooks don't fail
-#     under Debian 12's PEP 668 lockdown.
-#   - Install Claude CLI via the official install.sh — sets up ~/.claude
-#     skeleton correctly and matches Anthropic's recommended install path.
+# Why no `postgresql-client` / docker-compose:
+#   Backend storage is SQLite (qr_codes.db committed at repo root). There
+#   is no per-issue Postgres/ElasticMQ stack to provision and no
+#   `host.docker.internal` wiring needed.
 
 FROM node:22-bookworm-slim
 

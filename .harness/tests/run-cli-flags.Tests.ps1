@@ -2,6 +2,35 @@ BeforeAll {
     $script:RunContent = Get-Content "$PSScriptRoot/../run.ps1" -Raw
 }
 
+Describe 'run.ps1 -StartPhase flag' {
+    It 'declares -StartPhase parameter with implement/review/merge values' {
+        $script:RunContent | Should -Match '\[string\]\$StartPhase'
+        $script:RunContent | Should -Match "ValidateSet\(\s*'implement'\s*,\s*'review'\s*,\s*'merge'\s*\)"
+    }
+
+    It 'documents -StartPhase in the synopsis block' {
+        $script:RunContent | Should -Match '\.PARAMETER StartPhase'
+    }
+
+    It 'skips implement docker invocation when StartPhase is not implement' {
+        $script:RunContent | Should -Match "StartPhase\s+-ne\s+'implement'"
+        $script:RunContent | Should -Match 'Implement phase skipped'
+    }
+
+    It 'skips review when StartPhase is merge' {
+        $script:RunContent | Should -Match "StartPhase\s+-eq\s+'merge'"
+    }
+
+    It 'rehydrates worktree from remote branch when StartPhase != implement and none exists' {
+        $script:RunContent | Should -Match 'New-IssueWorktreeFromRemoteBranch'
+    }
+
+    It 'rejects -StartPhase without -Issue early' {
+        # Validation message includes the bad combo so the user can self-diagnose.
+        $script:RunContent | Should -Match '-StartPhase\s+\$StartPhase\s+requires\s+-Issue'
+    }
+}
+
 Describe 'run.ps1 CLI model override flags' {
     It 'declares -ImplementModel parameter' {
         $script:RunContent | Should -Match '\$ImplementModel'
