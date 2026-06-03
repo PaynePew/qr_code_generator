@@ -1,16 +1,30 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
-export default defineConfig({
-  plugins: [react()],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
+// Same-origin dev proxy (ADR 0009): the SPA and API share an origin in dev so
+// the SameSite=Lax session cookie is sent. /api (auth + QR) and /r (public
+// redirect) are forwarded to the backend; override the target with API_PROXY_TARGET.
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  const apiProxyTarget = env.API_PROXY_TARGET ?? 'http://localhost:8000'
+
+  return {
+    plugins: [react()],
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, './src'),
+      },
     },
-  },
-  test: {
-    environment: 'node',
-    globals: true,
-  },
+    server: {
+      proxy: {
+        '/api': { target: apiProxyTarget, changeOrigin: true },
+        '/r': { target: apiProxyTarget, changeOrigin: true },
+      },
+    },
+    test: {
+      environment: 'node',
+      globals: true,
+    },
+  }
 })

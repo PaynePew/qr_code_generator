@@ -37,6 +37,9 @@ function normalizeError(err: unknown): ApiError {
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? '',
   headers: { 'Content-Type': 'application/json' },
+  // Send the httpOnly session cookie with every request (ADR 0009). In dev this
+  // rides the same-origin Vite proxy; in prod the SPA and API share an origin.
+  withCredentials: true,
 })
 
 apiClient.interceptors.response.use(
