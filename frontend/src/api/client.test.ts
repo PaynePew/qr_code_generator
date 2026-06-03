@@ -97,6 +97,12 @@ describe('normalizeError', () => {
   })
 })
 
+describe('apiClient configuration', () => {
+  it('sends credentials so the session cookie flows (ADR 0009)', () => {
+    expect(apiClient.defaults.withCredentials).toBe(true)
+  })
+})
+
 describe('normalizeError (unit)', () => {
   it('produces isNetwork:true when no response is present', () => {
     const err = normalizeError(

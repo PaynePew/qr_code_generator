@@ -1,5 +1,6 @@
 import { Github, Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { LoginControl } from './LoginControl'
 
 interface HeaderProps {
   onToggleSidebar: () => void
@@ -20,6 +21,8 @@ export function Header({ onToggleSidebar }: HeaderProps) {
       <span className="flex-1 font-semibold text-base tracking-tight">
         QR Code Generator
       </span>
+
+      <LoginControl />
 
       <a
         href="https://github.com/PaynePew/qr_code_generator"

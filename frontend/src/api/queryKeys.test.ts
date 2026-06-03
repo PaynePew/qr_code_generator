@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { linkKey, analyticsKey } from './queryKeys'
+import { linkKey, analyticsKey, currentUserKey } from './queryKeys'
 
 describe('linkKey', () => {
   it('returns a tuple with the link namespace and token', () => {
@@ -18,5 +18,11 @@ describe('analyticsKey', () => {
 
   it('is distinct from the link key for the same token', () => {
     expect(analyticsKey('abc123')).not.toEqual(linkKey('abc123'))
+  })
+})
+
+describe('currentUserKey', () => {
+  it('returns the auth/me namespace tuple', () => {
+    expect(currentUserKey()).toEqual(['auth', 'me'])
   })
 })
