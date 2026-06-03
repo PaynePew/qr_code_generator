@@ -33,6 +33,9 @@ export function useAuth(): UseAuthResult {
   const loginMutation = useMutation<AuthUser, ApiError, string>({
     mutationFn: (credential) => startSession(credential),
     onSuccess(user) {
+      // Drop any prior user's cached links/analytics before seeding the new
+      // session — a shared browser must not serve user A's data to user B (qr-1ch).
+      queryClient.clear()
       queryClient.setQueryData(currentUserKey(), user)
     },
   })
@@ -42,6 +45,9 @@ export function useAuth(): UseAuthResult {
   const guestMutation = useMutation<AuthUser, ApiError>({
     mutationFn: () => enterDemo(),
     onSuccess(user) {
+      // Drop any prior user's cached links/analytics before seeding the new
+      // session — a shared browser must not serve user A's data to user B (qr-1ch).
+      queryClient.clear()
       queryClient.setQueryData(currentUserKey(), user)
     },
   })
@@ -51,6 +57,9 @@ export function useAuth(): UseAuthResult {
     onSuccess() {
       // Stop One Tap from silently re-authenticating the just-signed-out user.
       getGoogleIdentity()?.disableAutoSelect()
+      // Clear the signed-out user's cached links/analytics so the next user on a
+      // shared browser starts clean (qr-1ch).
+      queryClient.clear()
       queryClient.setQueryData(currentUserKey(), null)
     },
   })
