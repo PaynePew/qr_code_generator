@@ -49,7 +49,7 @@ def pg_container():
 
 
 @pytest.fixture(scope="session")
-def pg_engine(pg_container, tmp_path_factory):
+def pg_engine(pg_container):
     """Create a SQLAlchemy engine against the container and run Alembic."""
     url = pg_container.get_connection_url()
 
