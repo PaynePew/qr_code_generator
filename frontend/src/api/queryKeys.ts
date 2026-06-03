@@ -5,3 +5,5 @@ export const linkListKey = (deleted: boolean) => ['links', { deleted }] as const
 export const analyticsKey = (token: string) => ['analytics', token] as const
 
 export const currentUserKey = () => ['auth', 'me'] as const
+
+export const customizationKey = (token: string) => ['customization', token] as const

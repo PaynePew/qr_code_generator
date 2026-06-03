@@ -100,3 +100,65 @@ export async function getAnalytics(token: string): Promise<AnalyticsResponse> {
   const { data } = await apiClient.get<AnalyticsResponse>(`/api/qr/${token}/analytics`)
   return data
 }
+
+// ---------------------------------------------------------------------------
+// Customization (ADR 0011)
+// ---------------------------------------------------------------------------
+
+export interface StyleRecipe {
+  foreground: string
+  background: string
+  size: number
+  dotType: string
+  ecl: string
+}
+
+export interface CustomizationResponse {
+  token: string
+  style: StyleRecipe
+  image_url: string
+  logo_url: string | null
+  updated_at: string
+}
+
+/** Fetch the owner's style recipe + logo ref for re-editing (owner-only). */
+export async function getCustomization(token: string): Promise<CustomizationResponse> {
+  const { data } = await apiClient.get<CustomizationResponse>(`/api/qr/${token}/customization`)
+  return data
+}
+
+export interface SaveCustomizationArgs {
+  token: string
+  /** Serialisable style recipe (will be JSON-stringified as the ``style`` form field). */
+  style: StyleRecipe
+  /** Rendered composite QR image blob (PNG). */
+  image: Blob
+  /** Raw logo blob, if any. */
+  logo?: Blob | null
+}
+
+export interface SaveCustomizationResponse {
+  token: string
+  image_key: string
+  logo_key: string | null
+  updated_at: string
+}
+
+/**
+ * Upload a customization recipe + rendered composite to the server (owner-only).
+ * Uses multipart/form-data as required by PUT /api/qr/{token}/customization.
+ */
+export async function saveCustomization(args: SaveCustomizationArgs): Promise<SaveCustomizationResponse> {
+  const form = new FormData()
+  form.append('style', JSON.stringify(args.style))
+  form.append('image', args.image, 'composite.png')
+  if (args.logo) {
+    form.append('logo', args.logo, 'logo')
+  }
+  const { data } = await apiClient.put<SaveCustomizationResponse>(
+    `/api/qr/${args.token}/customization`,
+    form,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  )
+  return data
+}

@@ -6,11 +6,12 @@ vi.mock('./client', () => ({
     post: vi.fn(),
     patch: vi.fn(),
     delete: vi.fn(),
+    put: vi.fn(),
   },
 }))
 
 import { apiClient } from './client'
-import { getLink, patchLink, deleteLink, getAnalytics, listLinks } from './qr'
+import { getLink, patchLink, deleteLink, getAnalytics, listLinks, getCustomization, saveCustomization } from './qr'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -220,5 +221,117 @@ describe('getAnalytics', () => {
 
     expect(scan.status_code).toBe(302)
     expect(scan.user_agent).toBe('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)')
+  })
+})
+
+describe('getCustomization', () => {
+  const mockCustomization = {
+    token: 'abc1234',
+    style: {
+      foreground: '#ff0000',
+      background: '#ffffff',
+      size: 320,
+      dotType: 'square',
+      ecl: 'M',
+    },
+    image_url: 'https://storage.example.com/qr/abc1234/composite_abc.png',
+    logo_url: null,
+    updated_at: '2026-06-01T00:00:00',
+  }
+
+  it('sends GET /qr/{token}/customization', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: mockCustomization })
+
+    await getCustomization('abc1234')
+
+    expect(apiClient.get).toHaveBeenCalledWith('/api/qr/abc1234/customization')
+  })
+
+  it('returns the full customization response', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: mockCustomization })
+
+    const result = await getCustomization('abc1234')
+
+    expect(result.token).toBe('abc1234')
+    expect(result.style.foreground).toBe('#ff0000')
+    expect(result.logo_url).toBeNull()
+  })
+
+  it('propagates rejection (e.g. 404 when no customization exists)', async () => {
+    const err = Object.assign(new Error('Not Found'), { status: 404 })
+    vi.mocked(apiClient.get).mockRejectedValueOnce(err)
+
+    await expect(getCustomization('abc1234')).rejects.toMatchObject({ status: 404 })
+  })
+})
+
+describe('saveCustomization', () => {
+  const mockResponse = {
+    token: 'abc1234',
+    image_key: 'qr/abc1234/composite_uuid.png',
+    logo_key: null,
+    updated_at: '2026-06-01T00:00:00',
+  }
+
+  it('sends PUT /qr/{token}/customization as multipart/form-data', async () => {
+    vi.mocked(apiClient.put).mockResolvedValueOnce({ data: mockResponse })
+
+    await saveCustomization({
+      token: 'abc1234',
+      style: { foreground: '#ff0000', background: '#ffffff', size: 320, dotType: 'square', ecl: 'M' },
+      image: new Blob(['fake-png'], { type: 'image/png' }),
+    })
+
+    expect(apiClient.put).toHaveBeenCalledWith(
+      '/api/qr/abc1234/customization',
+      expect.any(FormData),
+      { headers: { 'Content-Type': 'multipart/form-data' } },
+    )
+  })
+
+  it('returns the save response', async () => {
+    vi.mocked(apiClient.put).mockResolvedValueOnce({ data: mockResponse })
+
+    const result = await saveCustomization({
+      token: 'abc1234',
+      style: { foreground: '#ff0000', background: '#ffffff', size: 320, dotType: 'square', ecl: 'M' },
+      image: new Blob(['fake-png'], { type: 'image/png' }),
+    })
+
+    expect(result.token).toBe('abc1234')
+    expect(result.image_key).toBe('qr/abc1234/composite_uuid.png')
+    expect(result.logo_key).toBeNull()
+  })
+
+  it('includes logo in form when provided', async () => {
+    vi.mocked(apiClient.put).mockResolvedValueOnce({ data: { ...mockResponse, logo_key: 'qr/abc1234/logo_uuid.png' } })
+
+    const logo = new Blob(['fake-logo'], { type: 'image/png' })
+    await saveCustomization({
+      token: 'abc1234',
+      style: { foreground: '#ff0000', background: '#ffffff', size: 320, dotType: 'square', ecl: 'M' },
+      image: new Blob(['fake-png'], { type: 'image/png' }),
+      logo,
+    })
+
+    const call = vi.mocked(apiClient.put).mock.calls[0]
+    const formData = call[1] as FormData
+    expect(formData.get('logo')).not.toBeNull()
+  })
+
+  it('propagates rejection (e.g. INVALID_IMAGE)', async () => {
+    const err = Object.assign(new Error('Unprocessable'), {
+      status: 422,
+      code: 'INVALID_IMAGE',
+    })
+    vi.mocked(apiClient.put).mockRejectedValueOnce(err)
+
+    await expect(
+      saveCustomization({
+        token: 'abc1234',
+        style: { foreground: '#ff0000', background: '#ffffff', size: 320, dotType: 'square', ecl: 'M' },
+        image: new Blob(['not-an-image']),
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_IMAGE' })
   })
 })
