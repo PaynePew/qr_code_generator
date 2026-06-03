@@ -35,6 +35,33 @@ export async function getLink(token: string): Promise<GetLinkResponse> {
   return data
 }
 
+export interface LinkListItem {
+  token: string
+  original_url: string
+  short_url: string
+  status: LinkStatus
+  scan_count: number
+  created_at: string
+  expires_at: string | null
+}
+
+export interface LinkListResponse {
+  items: LinkListItem[]
+  next_cursor: string | null
+}
+
+/**
+ * The owner dashboard list (ADR 0009): the signed-in user's own Links with
+ * state + total scan count, newest-first. Soft-deleted Links are excluded
+ * unless `deleted` is true (the trash filter). Requires a session (401 anon).
+ */
+export async function listLinks(deleted = false): Promise<LinkListResponse> {
+  const { data } = await apiClient.get<LinkListResponse>('/api/qr', {
+    params: deleted ? { deleted: true } : undefined,
+  })
+  return data
+}
+
 export interface PatchLinkRequest {
   original_url?: string
   expires_at?: string | null

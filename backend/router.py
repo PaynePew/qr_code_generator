@@ -130,6 +130,41 @@ def redirect(token: str, request: Request, db: Session = Depends(get_db)):
     return RedirectResponse(url=link.original_url, status_code=302)
 
 
+@router.get("/qr")
+def list_links(
+    deleted: bool = False,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Owner dashboard (ADR 0009): the caller's own Links only, newest-first,
+    # soft-deleted excluded unless ?deleted=true (the trash filter). Auth is
+    # required — get_current_user 401s an anonymous caller. Returns an
+    # items + next_cursor envelope; next_cursor is a forward-compat placeholder
+    # (no pagination yet). Total scan count per Link comes from one aggregate
+    # query (no N+1).
+    links = link_repository.list_links_for_owner(
+        db, current_user.id, include_deleted=deleted
+    )
+    scan_counts = scan_repository.scan_counts_for_tokens(
+        db, [link.token for link in links]
+    )
+    cfg = _config()
+    now = _now_utc()
+    items = [
+        {
+            "token": link.token,
+            "original_url": link.original_url,
+            "short_url": f"{cfg['base_url']}/r/{link.token}",
+            "status": derive_state(link, now),
+            "scan_count": scan_counts.get(link.token, 0),
+            "created_at": link.created_at.isoformat(),
+            "expires_at": link.expires_at.isoformat() if link.expires_at else None,
+        }
+        for link in links
+    ]
+    return {"items": items, "next_cursor": None}
+
+
 @router.get("/qr/{token}")
 def get_link_info(
     token: str,

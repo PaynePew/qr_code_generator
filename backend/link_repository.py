@@ -15,6 +15,22 @@ def get_link(db: Session, token: str) -> Link:
     return link
 
 
+def list_links_for_owner(
+    db: Session, owner_id: int, *, include_deleted: bool = False
+) -> list[Link]:
+    """The caller's own Links, newest-first, for the owner dashboard (ADR 0009).
+
+    Scoped to ``owner_id`` so a user never sees another user's Links; ownerless
+    legacy Links (``owner_id IS NULL``) never match. Soft-deleted Links are
+    excluded by default and reachable via ``include_deleted=True`` (the trash
+    filter). State and scan counts are layered on at the router edge.
+    """
+    query = db.query(Link).filter(Link.owner_id == owner_id)
+    if not include_deleted:
+        query = query.filter(Link.deleted_at.is_(None))
+    return query.order_by(Link.created_at.desc(), Link.id.desc()).all()
+
+
 def create_link(
     db: Session,
     *,

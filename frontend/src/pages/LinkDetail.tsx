@@ -580,7 +580,7 @@ export function LinkDetail() {
             載入中
           </span>
         ) : (
-          <StatusBadge status={entry.status} />
+          entry.status && <StatusBadge status={entry.status} />
         )}
       </div>
 
@@ -591,13 +591,15 @@ export function LinkDetail() {
         </div>
       )}
 
-      {entry.queryError && entry.status === 'missing' && (
+      {/* Owner-only (ADR 0009): a Link the caller does not own returns 404,
+          identical to a Link that does not exist — existence is not leaked. */}
+      {entry.queryError?.status === 404 && (
         <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
           找不到此連結。它可能已從系統中移除。
         </div>
       )}
 
-      {entry.queryError && entry.status !== 'missing' && (
+      {entry.queryError && entry.queryError.status !== 404 && (
         <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
           載入連結資訊時發生錯誤，請稍後再試。
         </div>

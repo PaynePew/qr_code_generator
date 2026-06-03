@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { linkKey, analyticsKey, currentUserKey } from './queryKeys'
+import { linkKey, linkListKey, analyticsKey, currentUserKey } from './queryKeys'
 
 describe('linkKey', () => {
   it('returns a tuple with the link namespace and token', () => {
@@ -8,6 +8,17 @@ describe('linkKey', () => {
 
   it('produces distinct keys for distinct tokens', () => {
     expect(linkKey('tok1')).not.toEqual(linkKey('tok2'))
+  })
+})
+
+describe('linkListKey', () => {
+  it('returns the links namespace tagged with the deleted filter', () => {
+    expect(linkListKey(false)).toEqual(['links', { deleted: false }])
+    expect(linkListKey(true)).toEqual(['links', { deleted: true }])
+  })
+
+  it('distinguishes the active list from the trash list', () => {
+    expect(linkListKey(false)).not.toEqual(linkListKey(true))
   })
 })
 

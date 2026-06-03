@@ -10,7 +10,7 @@ vi.mock('./client', () => ({
 }))
 
 import { apiClient } from './client'
-import { getLink, patchLink, deleteLink, getAnalytics } from './qr'
+import { getLink, patchLink, deleteLink, getAnalytics, listLinks } from './qr'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -129,6 +129,49 @@ describe('deleteLink', () => {
     const result = await deleteLink('abc1234')
 
     expect(result).toBeUndefined()
+  })
+})
+
+describe('listLinks', () => {
+  const mockList = {
+    items: [
+      {
+        token: 'abc1234',
+        original_url: 'https://example.com',
+        short_url: 'https://s.example.com/r/abc1234',
+        status: 'active' as const,
+        scan_count: 7,
+        created_at: '2026-01-02T00:00:00Z',
+        expires_at: null,
+      },
+    ],
+    next_cursor: null,
+  }
+
+  it('sends GET /api/qr without a deleted param by default', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: mockList })
+
+    await listLinks()
+
+    expect(apiClient.get).toHaveBeenCalledWith('/api/qr', { params: undefined })
+  })
+
+  it('sends ?deleted=true when requesting the trash filter', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: mockList })
+
+    await listLinks(true)
+
+    expect(apiClient.get).toHaveBeenCalledWith('/api/qr', { params: { deleted: true } })
+  })
+
+  it('returns the items + next_cursor envelope', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: mockList })
+
+    const result = await listLinks()
+
+    expect(result.items).toHaveLength(1)
+    expect(result.items[0].scan_count).toBe(7)
+    expect(result.next_cursor).toBeNull()
   })
 })
 
