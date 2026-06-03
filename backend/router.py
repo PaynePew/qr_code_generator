@@ -42,12 +42,24 @@ def _now_utc() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+_LABEL_MAX_LEN = 100
+
+
+def _normalise_label(raw: Optional[str]) -> Optional[str]:
+    """Trim whitespace and cap at _LABEL_MAX_LEN. None passes through as None."""
+    if raw is None:
+        return None
+    trimmed = raw.strip()
+    return trimmed[:_LABEL_MAX_LEN] if trimmed else None
+
+
 def _link_response(link: Link, base_url: str, state: LinkState) -> dict:
     return {
         "token": link.token,
         "original_url": link.original_url,
         "short_url": f"{base_url}/r/{link.token}",
         "qr_code_url": f"{base_url}/api/qr/{link.token}/image",
+        "label": link.label,
         "status": state,
         "created_at": link.created_at.isoformat(),
         "updated_at": link.updated_at.isoformat(),
@@ -70,6 +82,7 @@ def _log_scan(db: Session, token: str, status_code: int, request: Request):
 class CreateRequest(BaseModel):
     url: str
     expires_at: Optional[datetime] = None
+    label: Optional[str] = None
 
 
 @router.post("/qr/create")
@@ -100,6 +113,7 @@ def create_qr(
             secret=cfg["secret"],
             owner_id=current_user.id,
             expires_at=expires_at,
+            label=_normalise_label(body.label),
             now=now,
         )
     except TokenCollisionError:
@@ -111,6 +125,7 @@ def create_qr(
         "short_url": f"{base_url}/r/{link.token}",
         "qr_code_url": f"{base_url}/api/qr/{link.token}/image",
         "original_url": link.original_url,
+        "label": link.label,
     }
 
 
@@ -161,6 +176,7 @@ def list_links(
             "token": link.token,
             "original_url": link.original_url,
             "short_url": f"{cfg['base_url']}/r/{link.token}",
+            "label": link.label,
             "status": derive_state(link, now),
             "scan_count": scan_counts.get(link.token, 0),
             "created_at": link.created_at.isoformat(),
@@ -190,6 +206,7 @@ class PatchRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     original_url: Optional[str] = Field(default=None, min_length=1)
     expires_at: Optional[datetime] = None
+    label: Optional[str] = None
 
 
 @router.patch("/qr/{token}")
@@ -209,7 +226,7 @@ def patch_link(
     forbid_if_demo(current_user)
     now = _now_utc()
 
-    fields_to_update = body.model_fields_set & {"original_url", "expires_at"}
+    fields_to_update = body.model_fields_set & {"original_url", "expires_at", "label"}
     if not fields_to_update:
         raise AppError(ErrorCode.VALIDATION_ERROR, 422, "No updatable fields provided")
 
@@ -226,12 +243,17 @@ def patch_link(
     if "expires_at" in fields_to_update:
         normalized_expires = body.expires_at.replace(tzinfo=None) if body.expires_at else None
 
+    normalised_label: Optional[str] = None
+    if "label" in fields_to_update:
+        normalised_label = _normalise_label(body.label)
+
     link = link_repository.apply_patch(
         db,
         link,
         fields=fields_to_update,
         original_url=normalized_url,
         expires_at=normalized_expires,
+        label=normalised_label,
         now=now,
     )
 

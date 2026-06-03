@@ -39,6 +39,7 @@ def create_link(
     owner_id: int,
     expires_at: Optional[datetime],
     now: datetime,
+    label: Optional[str] = None,
 ) -> Link:
     holder: list[Link] = []
 
@@ -49,6 +50,7 @@ def create_link(
                 token=token,
                 original_url=normalized_url,
                 owner_id=owner_id,
+                label=label,
                 created_at=now,
                 updated_at=now,
                 expires_at=expires_at,
@@ -73,6 +75,7 @@ def apply_patch(
     fields: set[str],
     original_url: Optional[str] = None,
     expires_at: Optional[datetime] = None,
+    label: Optional[str] = None,
     now: datetime,
 ) -> Link:
     ensure_patchable(link, now)
@@ -80,6 +83,8 @@ def apply_patch(
         link.original_url = original_url
     if "expires_at" in fields:
         link.expires_at = expires_at
+    if "label" in fields:
+        link.label = label
     link.updated_at = now
     db.commit()
     db.refresh(link)

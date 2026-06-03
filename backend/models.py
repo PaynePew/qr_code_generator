@@ -32,6 +32,9 @@ class Link(Base):
     owner_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id"), nullable=True, default=None
     )
+    # Optional owner-authored name for this Link (ADR 0010). Nullable, non-unique;
+    # trimmed and capped at 100 chars at the router edge before persisting.
+    label: Mapped[str | None] = mapped_column(String(100), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
