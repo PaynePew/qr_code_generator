@@ -1,5 +1,7 @@
 import hashlib
 import secrets
+from collections.abc import Callable
+
 from sqlalchemy.exc import IntegrityError
 
 BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
@@ -24,7 +26,7 @@ def generate_token(url: str, secret: str, nonce: bytes) -> str:
     return b62[:TOKEN_LEN].ljust(TOKEN_LEN, BASE62[0])
 
 
-def allocate_token(url: str, secret: str, try_insert) -> str:
+def allocate_token(url: str, secret: str, try_insert: Callable[[str], None]) -> str:
     """Mint a unique token for url, retrying on collision with a fresh random nonce each time.
 
     Uses a cryptographically random 16-byte nonce per attempt so that submitting the same URL

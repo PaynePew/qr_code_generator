@@ -6,6 +6,8 @@ Create Date: 2026-06-03
 
 Captures the current schema (links, scans) as the baseline migration.
 """
+from __future__ import annotations
+
 from alembic import op
 import sqlalchemy as sa
 

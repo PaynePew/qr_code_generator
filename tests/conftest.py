@@ -71,19 +71,18 @@ def db_engine(pg_container):
 @pytest.fixture
 def db_session(db_engine):
     """
-    Open a connection, begin a transaction, and expose a Session.
-    After each test the outer transaction is rolled back — leaving the
-    database pristine for the next test without touching the schema.
+    Open a connection, begin an outer transaction, and expose a Session that
+    joins it via SAVEPOINTs (``join_transaction_mode="create_savepoint"``).
+    Application-code ``session.commit()`` releases and restarts the savepoint
+    instead of committing; the outer ``transaction.rollback()`` in teardown
+    discards everything, leaving the database pristine for the next test
+    without rebuilding the schema.
     """
     connection = db_engine.connect()
     transaction = connection.begin()
 
-    Session = sessionmaker(bind=connection)
+    Session = sessionmaker(bind=connection, join_transaction_mode="create_savepoint")
     session = Session()
-
-    # Nested (savepoint) transaction so that `session.commit()` inside
-    # application code flushes but does not actually commit to the DB.
-    session.begin_nested()
 
     yield session
 
