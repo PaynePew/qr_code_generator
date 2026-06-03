@@ -32,3 +32,9 @@ frontend/dist/
 .dolt/
 .beads-credential-key
 .beads/proxieddb/
+
+# Beads passive export + transient import file
+# (issues sync via Dolt refs/dolt/data, not git; .beads/.gitignore deliberately leaves
+#  issues.jsonl trackable, but this project treats Dolt as the single source of truth)
+.beads/issues.jsonl
+.beads/.auto-import-issues.jsonl
