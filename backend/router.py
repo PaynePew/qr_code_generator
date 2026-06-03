@@ -11,6 +11,7 @@ from . import analytics
 from . import link_repository
 from . import scan_repository
 from .auth import get_current_user
+from .authorization import authorize_owner
 from .database import get_db
 from .link_state import LinkState, derive_state
 from .models import Link, User
@@ -130,8 +131,15 @@ def redirect(token: str, request: Request, db: Session = Depends(get_db)):
 
 
 @router.get("/qr/{token}")
-def get_link_info(token: str, db: Session = Depends(get_db)):
+def get_link_info(
+    token: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Owner-only (ADR 0009): info carries original_url. A non-owner is treated as
+    # not-found (404, not 403) so Token existence is not leaked.
     link = link_repository.get_link(db, token)
+    authorize_owner(link, current_user)
     cfg = _config()
     state = derive_state(link, _now_utc())
     return _link_response(link, cfg["base_url"], state)
@@ -144,8 +152,17 @@ class PatchRequest(BaseModel):
 
 
 @router.patch("/qr/{token}")
-def patch_link(token: str, body: PatchRequest, db: Session = Depends(get_db)):
+def patch_link(
+    token: str,
+    body: PatchRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Owner-only (ADR 0009): closes the redirect-hijack hole — a stranger who
+    # photographed the QR (the Token is not secret) cannot repoint it. Non-owner
+    # -> 404, authorized before any field is read.
     link = link_repository.get_link(db, token)
+    authorize_owner(link, current_user)
     now = _now_utc()
 
     fields_to_update = body.model_fields_set & {"original_url", "expires_at"}
@@ -180,15 +197,29 @@ def patch_link(token: str, body: PatchRequest, db: Session = Depends(get_db)):
 
 
 @router.delete("/qr/{token}")
-def delete_link(token: str, db: Session = Depends(get_db)):
+def delete_link(
+    token: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Owner-only (ADR 0009): only the owner can take down their campaign;
+    # non-owner -> 404.
     link = link_repository.get_link(db, token)
+    authorize_owner(link, current_user)
     link_repository.mark_deleted(db, link, _now_utc())
     return {"token": token, "status": "deleted"}
 
 
 @router.get("/qr/{token}/analytics")
-def get_analytics(token: str, db: Session = Depends(get_db)):
-    link_repository.get_link(db, token)
+def get_analytics(
+    token: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    # Owner-only (ADR 0009): campaign performance stays private; non-owner -> 404.
+    # ADR 0006 still binds — aggregates only, never raw scanner IPs.
+    link = link_repository.get_link(db, token)
+    authorize_owner(link, current_user)
     scans = scan_repository.scans_for_token(db, token)
     return {
         "token": token,

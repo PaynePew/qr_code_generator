@@ -91,8 +91,11 @@ class TestInfoEndpoint:
         resp = auth_client.get(f"/api/qr/{token}")
         assert resp.status_code == 200
 
-    def test_info_returns_404_for_unknown_token(self, client):
-        resp = client.get("/api/qr/NOTEXIST")
+    def test_info_returns_404_for_unknown_token(self, auth_client):
+        # Owner-only now (ADR 0009): an authenticated caller asking for a token
+        # that does not exist gets 404 — same response a non-owner gets, so
+        # existence is not leaked. (Unauthenticated -> 401, covered elsewhere.)
+        resp = auth_client.get("/api/qr/NOTEXIST")
         assert resp.status_code == 404
 
     def test_info_response_shape(self, auth_client):
@@ -203,8 +206,9 @@ class TestPatchEndpoint:
         resp = auth_client.patch(f"/api/qr/{token}", json={"original_url": ""})
         assert resp.status_code == 422
 
-    def test_patch_returns_404_for_unknown_token(self, client):
-        resp = client.patch("/api/qr/NOTEXIST", json={"original_url": "https://example.com/x"})
+    def test_patch_returns_404_for_unknown_token(self, auth_client):
+        # Owner-only now (ADR 0009): authenticated + unknown token -> 404.
+        resp = auth_client.patch("/api/qr/NOTEXIST", json={"original_url": "https://example.com/x"})
         assert resp.status_code == 404
 
     def test_patch_sets_updated_at(self, auth_client):
@@ -225,8 +229,9 @@ class TestDeleteEndpoint:
         assert auth_client.delete(f"/api/qr/{token}").status_code == 200
         assert auth_client.delete(f"/api/qr/{token}").status_code == 200
 
-    def test_delete_returns_404_for_unknown_token(self, client):
-        assert client.delete("/api/qr/NOTEXIST").status_code == 404
+    def test_delete_returns_404_for_unknown_token(self, auth_client):
+        # Owner-only now (ADR 0009): authenticated + unknown token -> 404.
+        assert auth_client.delete("/api/qr/NOTEXIST").status_code == 404
 
 
 class TestRedirectLifecycle:

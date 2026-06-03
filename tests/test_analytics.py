@@ -61,8 +61,9 @@ class TestScanLogging:
 
 
 class TestAnalyticsEndpoint:
-    def test_analytics_returns_404_for_unknown_token(self, client):
-        resp = client.get("/api/qr/NOTEXIST/analytics")
+    def test_analytics_returns_404_for_unknown_token(self, auth_client):
+        # Owner-only now (ADR 0009): authenticated + unknown token -> 404.
+        resp = auth_client.get("/api/qr/NOTEXIST/analytics")
         assert resp.status_code == 404
 
     def test_analytics_returns_200_for_active_link(self, auth_client):
