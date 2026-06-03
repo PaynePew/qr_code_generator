@@ -24,6 +24,12 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: 'node',
+      environmentMatchGlobs: [
+        // Component and hook tests that need a DOM run in jsdom.
+        ['src/**/*.component.test.tsx', 'jsdom'],
+        ['src/**/*.hook.test.ts', 'jsdom'],
+        ['src/**/*.hook.test.tsx', 'jsdom'],
+      ],
       globals: true,
     },
   }
