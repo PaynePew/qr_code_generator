@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Boolean, ForeignKey, Integer, String, DateTime
+from sqlalchemy import Boolean, ForeignKey, Integer, String, DateTime, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -50,3 +50,28 @@ class Scan(Base):
     status_code: Mapped[int] = mapped_column(Integer, nullable=False)
     ip_address: Mapped[str | None] = mapped_column(String, nullable=True)
     user_agent: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class LinkCustomization(Base):
+    """Persisted customization for a Link's QR image (ADR 0011).
+
+    One row per Link (1:1 enforced by UNIQUE on link_id).  Created or replaced
+    on each successful PUT /api/qr/{token}/customization.
+
+    - ``style_json``   — serialized style recipe (colours, dot style, etc.).
+    - ``image_key``    — storage key of the composite QR PNG (immutable versioned key).
+    - ``logo_key``     — storage key of the uploaded logo, nullable.
+    - ``updated_at``   — wall-clock time of the last successful PUT.
+    """
+
+    __tablename__ = "link_customizations"
+    __table_args__ = (UniqueConstraint("link_id", name="uq_link_customizations_link_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    link_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("links.id", ondelete="CASCADE"), nullable=False
+    )
+    style_json: Mapped[str] = mapped_column(Text, nullable=False)
+    image_key: Mapped[str] = mapped_column(String, nullable=False)
+    logo_key: Mapped[str | None] = mapped_column(String, nullable=True, default=None)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)

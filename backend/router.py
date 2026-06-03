@@ -1,23 +1,36 @@
 from __future__ import annotations
 
+import json
 import os
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, UploadFile, File, Form
 from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from . import analytics
+from . import customization_repository
 from . import link_repository
 from . import scan_repository
 from .auth import get_current_user
 from .authorization import authorize_owner, forbid_if_demo
 from .database import get_db
-from .errors import AppError, ErrorCode, invalid_url, link_gone, token_allocation_failed
+from .errors import (
+    AppError,
+    ErrorCode,
+    file_too_large,
+    invalid_image,
+    invalid_url,
+    link_gone,
+    not_found,
+    token_allocation_failed,
+)
 from .link_state import LinkState, derive_state
 from .models import Link, User
+from .storage import InMemoryGateway, MAX_IMAGE_BYTES, StorageGateway, sniff_image_content_type, strip_png_exif
 from .token_generator import TokenCollisionError
 from .url_validator import validate_and_normalize, InvalidURLError
 from .qr_generator import generate_qr_png
@@ -29,6 +42,28 @@ redirect_router = APIRouter()
 # get_db now lives in backend.database (shared with the auth layer to avoid a
 # router<->auth import cycle); it is imported above so existing
 # `from backend.router import get_db` call sites keep working.
+
+# ---------------------------------------------------------------------------
+# Storage gateway — injected via FastAPI dependency so tests can swap it out.
+# ---------------------------------------------------------------------------
+
+# Module-level singleton for the real app (replaced in tests via overrides).
+_storage_gateway: StorageGateway = InMemoryGateway()
+
+
+def _get_storage() -> StorageGateway:
+    """FastAPI dependency: return the active StorageGateway instance."""
+    return _storage_gateway
+
+
+def _build_versioned_key(token: str, prefix: str, ext: str) -> str:
+    """Return an immutable versioned storage key.
+
+    Format: ``qr/{token}/{prefix}_{uuid4}.{ext}``
+    A new UUID4 on every call guarantees the key is unique across re-stylings
+    (ADR 0011: old composite untouched; reaped by S3 lifecycle rule).
+    """
+    return f"qr/{token}/{prefix}_{uuid.uuid4().hex}.{ext}"
 
 
 def _config():
@@ -130,12 +165,155 @@ def create_qr(
 
 
 @router.get("/qr/{token}/image")
-def qr_image(token: str, db: Session = Depends(get_db)):
-    link_repository.get_link(db, token)
+def qr_image(
+    token: str,
+    db: Session = Depends(get_db),
+    storage: StorageGateway = Depends(_get_storage),
+):
+    """Serve the stored composite QR when present; else regenerate vanilla PNG.
+
+    ADR 0011: customized Links return the persisted composite; uncustomized Links
+    fall back to the on-demand vanilla generator (behavior unchanged).
+    """
+    link = link_repository.get_link(db, token)
+    customization = customization_repository.get_customization(db, link.id)
+
+    if customization is not None:
+        composite = storage.get(customization.image_key)
+        if composite is not None:
+            content_type = sniff_image_content_type(composite) or "image/png"
+            return Response(content=composite, media_type=content_type)
+
+    # Fallback: regenerate vanilla PNG (unchanged for uncustomized Links)
     cfg = _config()
     short_url = f"{cfg['base_url']}/r/{token}"
     png_bytes = generate_qr_png(short_url)
     return Response(content=png_bytes, media_type="image/png")
+
+
+def _validate_and_strip_image(data: bytes, field_name: str = "image") -> tuple[bytes, str]:
+    """Validate image bytes: size cap, magic-byte sniff, EXIF strip.
+
+    Returns ``(stripped_bytes, content_type)``.
+    Raises ``AppError`` on invalid or oversized uploads (ADR 0011).
+    """
+    if len(data) > MAX_IMAGE_BYTES:
+        raise file_too_large(MAX_IMAGE_BYTES)
+    content_type = sniff_image_content_type(data)
+    if content_type is None:
+        raise invalid_image(f"{field_name} is not a recognised image format (PNG, JPEG, GIF, WebP)")
+    stripped = strip_png_exif(data)
+    return stripped, content_type
+
+
+@router.put("/qr/{token}/customization")
+async def put_customization(
+    token: str,
+    style: str = Form(..., description="JSON-serialised style recipe"),
+    image: UploadFile = File(..., description="Rendered composite QR PNG"),
+    logo: UploadFile | None = File(default=None, description="Optional logo (re-upload or omit)"),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    storage: StorageGateway = Depends(_get_storage),
+):
+    """Persist a customization recipe + rendered composite (owner-only).
+
+    Accepts a multipart/form-data body:
+    - ``style``: JSON-serialised style recipe (colours, dot style, …).
+    - ``image``: The rendered composite QR PNG exported by the frontend.
+    - ``logo`` (optional): Raw logo image; if omitted the previous logo is cleared.
+
+    Writes a NEW versioned key on every call so re-styling never touches the old
+    composite (ADR 0011: immutable versioned keys, reaped by S3 lifecycle rule).
+    Owner-only: non-owners receive 404 (owner-404 rule, ADR 0009/0012).
+    Demo account is read-only.
+    """
+    link = link_repository.get_link(db, token)
+    authorize_owner(link, current_user)
+    forbid_if_demo(current_user)
+
+    # Validate style JSON at the router edge (must be a JSON object).
+    try:
+        style_parsed = json.loads(style)
+        if not isinstance(style_parsed, dict):
+            raise ValueError("style must be a JSON object")
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise AppError(ErrorCode.VALIDATION_ERROR, 422, f"Invalid style: {exc}") from exc
+
+    # Validate and strip EXIF from composite image.
+    image_bytes = await image.read()
+    stripped_image, image_content_type = _validate_and_strip_image(image_bytes, "image")
+
+    # Validate logo if supplied.
+    logo_bytes: bytes | None = None
+    logo_content_type: str | None = None
+    if logo is not None and logo.filename:
+        raw_logo = await logo.read()
+        if raw_logo:
+            logo_bytes, logo_content_type = _validate_and_strip_image(raw_logo, "logo")
+
+    now = _now_utc()
+
+    # Write composite under a NEW versioned key (old one left untouched).
+    image_ext = "png" if image_content_type == "image/png" else "bin"
+    image_key = _build_versioned_key(token, "composite", image_ext)
+    storage.put(image_key, stripped_image, image_content_type)
+
+    # Write logo if provided.
+    logo_key: str | None = None
+    if logo_bytes is not None and logo_content_type is not None:
+        logo_ext = logo_content_type.split("/")[-1]
+        logo_key = _build_versioned_key(token, "logo", logo_ext)
+        storage.put(logo_key, logo_bytes, logo_content_type)
+
+    customization_repository.upsert_customization(
+        db,
+        link_id=link.id,
+        style_json=json.dumps(style_parsed, separators=(",", ":")),
+        image_key=image_key,
+        logo_key=logo_key,
+        now=now,
+    )
+
+    return {
+        "token": token,
+        "image_key": image_key,
+        "logo_key": logo_key,
+        "updated_at": now.isoformat(),
+    }
+
+
+@router.get("/qr/{token}/customization")
+def get_customization(
+    token: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    storage: StorageGateway = Depends(_get_storage),
+):
+    """Return the style recipe + logo ref for re-editing (owner-only).
+
+    Returns 404 when the Link has no customization yet (same shape as not-found
+    so the owner cannot probe whether a token exists).
+    Owner-only: non-owners receive 404 (owner-404 rule, ADR 0009/0012).
+    """
+    link = link_repository.get_link(db, token)
+    authorize_owner(link, current_user)
+
+    customization = customization_repository.get_customization(db, link.id)
+    if customization is None:
+        raise not_found("No customization found for this token")
+
+    logo_url: str | None = None
+    if customization.logo_key:
+        logo_url = storage.url_for(customization.logo_key)
+
+    return {
+        "token": token,
+        "style": json.loads(customization.style_json),
+        "image_url": storage.url_for(customization.image_key),
+        "logo_url": logo_url,
+        "updated_at": customization.updated_at.isoformat(),
+    }
 
 
 @redirect_router.get("/r/{token}")

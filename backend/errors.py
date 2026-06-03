@@ -119,6 +119,22 @@ def invalid_url(detail: str) -> AppError:
     return AppError(ErrorCode.INVALID_URL, 422, detail)
 
 
+def invalid_image(detail: str = "Upload is not a valid image") -> AppError:
+    """422 INVALID_IMAGE — uploaded bytes failed image validation (ADR 0011)."""
+    return AppError(ErrorCode.INVALID_IMAGE, 422, detail)
+
+
+def file_too_large(limit_bytes: int) -> AppError:
+    """413 FILE_TOO_LARGE — upload exceeds the size ceiling (ADR 0011)."""
+    limit_mb = limit_bytes / (1024 * 1024)
+    return AppError(
+        ErrorCode.FILE_TOO_LARGE,
+        413,
+        f"Upload exceeds the {limit_mb:.0f} MiB size limit",
+        details={"limit_bytes": limit_bytes},
+    )
+
+
 def token_allocation_failed() -> AppError:
     """500 TOKEN_ALLOCATION_FAILED — token generator exhausted its retry budget."""
     return AppError(
