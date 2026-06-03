@@ -1,49 +1,100 @@
+"""
+Test configuration.
+
+DB-touching tests run on a per-session Postgres testcontainer.
+Schema is built by `alembic upgrade head` so migrations are exercised.
+Each test gets per-test transaction-rollback isolation via a savepoint.
+
+Pure-logic tests (no db_session / client fixture) touch no DB and stay instant.
+"""
 import os
+import subprocess
+import sys
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
 
 os.environ.setdefault("SECRET", "test-secret-value")
 os.environ.setdefault("BASE_URL", "http://testserver")
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 
-from backend.main import app
-from backend.models import Base
-from backend.router import get_db
+from backend.main import app  # noqa: E402
+from backend.router import get_db  # noqa: E402
 
 
-@pytest.fixture
-def db_engine():
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
+# ---------------------------------------------------------------------------
+# Session-scoped Postgres testcontainer
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="session")
+def pg_container():
+    """Start a Postgres testcontainer once for the whole test session."""
+    from testcontainers.postgres import PostgresContainer
+
+    with PostgresContainer("postgres:16-alpine") as pg:
+        yield pg
+
+
+@pytest.fixture(scope="session")
+def db_engine(pg_container):
+    """
+    Create a SQLAlchemy engine connected to the testcontainer Postgres.
+    Run alembic upgrade head once to build the schema from migrations.
+    """
+    url = pg_container.get_connection_url()
+    # testcontainers returns a psycopg2+driver URL; ensure it is the
+    # standard postgresql:// scheme that SQLAlchemy understands.
+    url = url.replace("postgresql+psycopg2://", "postgresql://", 1)
+
+    # Build schema via Alembic so migrations are exercised.
+    env = {**os.environ, "DATABASE_URL": url}
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=root,
+        env=env,
+        check=True,
     )
 
-    @event.listens_for(engine, "connect")
-    def set_wal(dbapi_conn, _):
-        cursor = dbapi_conn.cursor()
-        cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.close()
-
-    Base.metadata.create_all(bind=engine)
+    engine = create_engine(url)
     yield engine
     engine.dispose()
 
 
+# ---------------------------------------------------------------------------
+# Per-test transaction-rollback isolation
+# ---------------------------------------------------------------------------
+
 @pytest.fixture
 def db_session(db_engine):
-    Session = sessionmaker(bind=db_engine)
+    """
+    Open a connection, begin a transaction, and expose a Session.
+    After each test the outer transaction is rolled back — leaving the
+    database pristine for the next test without touching the schema.
+    """
+    connection = db_engine.connect()
+    transaction = connection.begin()
+
+    Session = sessionmaker(bind=connection)
     session = Session()
+
+    # Nested (savepoint) transaction so that `session.commit()` inside
+    # application code flushes but does not actually commit to the DB.
+    session.begin_nested()
+
     yield session
+
     session.close()
+    transaction.rollback()
+    connection.close()
 
 
 @pytest.fixture
 def client(db_session):
+    """FastAPI TestClient wired to the per-test transactional db_session."""
     def override_get_db():
         yield db_session
 
