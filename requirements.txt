@@ -12,3 +12,4 @@ alembic>=1.13.0
 psycopg2-binary>=2.9.0
 testcontainers[postgres]>=4.0.0
 pytest-asyncio>=0.23.0
+asgi-correlation-id>=5.0.0

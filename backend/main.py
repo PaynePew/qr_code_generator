@@ -4,6 +4,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
+from asgi_correlation_id import CorrelationIdMiddleware, correlation_id
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -13,12 +14,14 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from .auth_router import auth_router
 from .errors import AppError, ErrorCode
+from .logging_config import configure_logging
 from .router import router, redirect_router
 from .rate_limiter.middleware import RateLimitMiddleware
 
 _logger = logging.getLogger(__name__)
 
 load_dotenv()
+configure_logging()
 
 
 def _parse_bool(val: str, name: str) -> bool:
@@ -134,6 +137,18 @@ _HTTP_STATUS_TO_CODE: dict[int, ErrorCode] = {
 
 
 app = FastAPI(lifespan=lifespan)
+# CorrelationIdMiddleware runs outermost so the ID is available from the
+# very first log record in every request.  It reads X-Request-ID from a
+# trusted proxy or generates a UUID4 when absent, and echoes it in the
+# response X-Request-ID header (ADR 0013).
+app.add_middleware(
+    CorrelationIdMiddleware,
+    # Accept any non-empty header value so nginx-style IDs (hex32) and
+    # custom proxy values pass through unchanged.  The default validator
+    # only accepts strict UUID4 strings, which is too narrow for proxies
+    # that generate non-UUID correlation IDs.
+    validator=lambda v: bool(v and len(v) <= 128),
+)
 app.add_middleware(RateLimitMiddleware)
 # Credentialed CORS (cookies must flow) forbids wildcard methods/headers — they
 # must be enumerated (ADR 0009). Same-origin prod needs no CORS; this serves the
@@ -143,7 +158,7 @@ app.add_middleware(
     allow_origin_regex=r"https?://localhost:\d+",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "X-Request-ID"],
 )
 
 
@@ -193,11 +208,17 @@ async def _handle_unexpected_error(_: Request, exc: Exception) -> JSONResponse:
     """Handler 4 of 4 — catch-all; logged with a correlation id, never leaks internals.
 
     No stack trace or exception message is returned to the client (ADR 0012).
+    The correlation id is echoed in ``details.correlation_id`` so the caller can
+    provide it when reporting the issue (ADR 0013).
     """
+    cid = correlation_id.get(None)
     _logger.exception("Unhandled exception: %s", type(exc).__name__)
+    details: dict = {}
+    if cid:
+        details["correlation_id"] = cid
     return JSONResponse(
         status_code=500,
-        content=_error_body(ErrorCode.INTERNAL_ERROR, "An unexpected error occurred"),
+        content=_error_body(ErrorCode.INTERNAL_ERROR, "An unexpected error occurred", details or None),
     )
 
 
