@@ -23,46 +23,23 @@ A **Link** (one row in the `links` table) can be in exactly one of three states 
 
 Reactivation applies only to `expired`. It is **not** valid on `deleted` links — terminal state remains terminal.
 
-### Derived states (frontend-only)
+## Dashboard
 
-These states do **not** exist in the database or in any API response. They are computed by the frontend on top of the canonical states above and surfaced in the UI.
+The **Dashboard** is the signed-in user's server-driven home: it lists exactly the Links they own (ADR 0009), newest-first, each with its current state and total **scan count**, fetched from the owner-scoped list endpoint (`GET /api/qr`). Soft-deleted Links are excluded by default and reachable via a trash filter (`?deleted=true`). The list is wrapped in an `items` + `next_cursor` envelope; `next_cursor` is a forward-compatibility placeholder (no pagination logic yet).
 
-| Derived state | Condition | Origin |
-|--------------|-----------|--------|
-| `missing` | A token sits in browser localStorage history, but `GET /api/qr/{token}` returns 404 | The browser's local history has drifted from the server (DB reset, link purged out-of-band, history imported from another browser) |
-
-`missing` is rendered with a distinct badge in the dashboard list and a manual "remove from history" action. The frontend MUST NOT auto-purge missing entries silently — the user needs to see that data drift happened.
-
-#### Display priority
-
-The frontend reconciles three signals to decide what state to render for a Link History entry: the localStorage row (with its `dismissed` flag), the cached result of `GET /api/qr/{token}`, and any optimistic write made by a successful mutation. The priority is fixed:
-
-1. API returns 404 → `missing`
-2. API has data (including optimistically written data) → the API's `status`
-3. Query is still loading AND `dismissed=true` → `deleted` (synchronous fallback)
-4. Query is still loading AND `dismissed=false` → `loading`
-
-API truth wins over the local `dismissed` flag once it has loaded. The `dismissed` flag is a fallback for the loading window, not an independent source of truth. A successful `DELETE` writes `status='deleted'` into the query cache optimistically so rule 2 carries the new state through immediately, before the background refetch lands.
-
-## Link History (frontend, Phase 1)
-
-The **Link History** is the per-browser list of tokens previously created from this device, kept in `localStorage`. It is the Phase 1 substitute for user identity — there is no auth, so the dashboard can only ever show the links a given browser has minted itself.
-
-Link History supports a soft/hard removal distinction (a `dismissed` flag separates "deleted on the server but still in my history" from "purged from history entirely") and a recover-by-token affordance for users who lose their localStorage. Schema details and operations live in PRD #6.
-
-When auth is introduced, Link History is expected to migrate into a server-side per-user concept; the term will outlive its localStorage implementation.
+The Dashboard is authoritative because the server is the single source of truth for "my Links" — the same Links appear on any device the user signs in from. (This supersedes the Phase-1 `localStorage` Link History and its `missing` / `dismissed` / Display-priority reconciliation, which existed only to paper over per-browser drift before accounts; see ADR 0005, superseded by ADR 0009.)
 
 ## User
 
 A **User** (one row in the `users` table) is an authenticated account, introduced in Phase 1 (ADR 0009). Identity is keyed by **`google_sub`** — Google's stable, unique subject id — not by email (which can change). A User carries `email`, `name`, `picture`, `created_at`, `last_login_at`, and an **`is_demo`** flag marking the single shared read-only demo account.
 
-A User is created or refreshed by a Google sign-in: the backend verifies Google's ID token once, then issues its own session (it does not reuse Google's token). A User **owns** the Links they create (see Ownership); migrating Link History to a server-side per-user concept is a later slice.
+A User is created or refreshed by a Google sign-in: the backend verifies Google's ID token once, then issues its own session (it does not reuse Google's token). A User **owns** the Links they create (see Ownership) and sees them on the server-driven Dashboard from any device.
 
 ## Ownership
 
 Every Link minted after Phase 1 is **owned**: the `links.owner_id` column references the creating `User` (ADR 0009). Creating a Link **requires a logged-in User** — an unauthenticated create is rejected (401) — and the creator is stamped as `owner_id` at mint time.
 
-`owner_id` is **nullable**: legacy pre-auth Links predate accounts, so they stay ownerless (`owner_id IS NULL`). Ownerless Links still redirect when scanned, but never surface in any dashboard ("start empty" — there is no backfill). Owner-scoped listing and owner-only authorization (non-owner → 404) are defined by ADR 0009 and land in their own slices.
+`owner_id` is **nullable**: legacy pre-auth Links predate accounts, so they stay ownerless (`owner_id IS NULL`). Ownerless Links still redirect when scanned, but never surface in any dashboard ("start empty" — there is no backfill). Per ADR 0009, owner-scoped listing (the Dashboard's `GET /api/qr`) returns only the caller's own Links, and owner-only authorization makes info/analytics/PATCH/DELETE return 404 to a non-owner so Token existence is not leaked.
 
 ## Session
 

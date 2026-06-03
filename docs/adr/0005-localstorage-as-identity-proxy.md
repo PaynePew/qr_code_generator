@@ -1,6 +1,8 @@
 # ADR 0005: `localStorage` is the Phase-1 identity proxy; no public list endpoint
 
-**Status:** Accepted
+**Status:** Superseded by [ADR 0009](0009-authentication-required-per-user-ownership.md)
+
+> Superseded: authentication is now required and Links are owned per-user (ADR 0009). The `localStorage` Link History — with its `missing` / `dismissed` states and Display-priority reconciliation — is retired in favor of the server-driven owner Dashboard backed by the owner-scoped `GET /api/qr` list endpoint. The "no public list endpoint" caution still holds in spirit: the list endpoint added by ADR 0009 is **owner-scoped and authenticated** (a non-owner gets 404), never a public enumeration. The original decision below is kept for historical context.
 
 ## Context
 

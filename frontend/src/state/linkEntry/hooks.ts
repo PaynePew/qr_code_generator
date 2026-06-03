@@ -1,4 +1,3 @@
-import { useCallback, useSyncExternalStore } from 'react'
 import {
   useMutation,
   useQuery,
@@ -16,43 +15,8 @@ import {
   type GetLinkResponse,
 } from '@/api/qr'
 import type { ApiError } from '@/api/client'
-import {
-  addToken,
-  listTokens,
-  markDismissed as storageMarkDismissed,
-  removeFromHistory as storageRemoveFromHistory,
-} from './storage'
-import { deriveEntry, type QueryState } from './derive'
-import type { DerivedEntry, EntryAction, HistoryEntry } from './types'
-
-// --- Storage subscription ---
-// useSyncExternalStore needs a stable snapshot reference between calls when nothing has changed.
-// listTokens() always returns a fresh array, so we cache it and only invalidate on writes.
-
-type Listener = () => void
-const listeners = new Set<Listener>()
-let cachedSnapshot: HistoryEntry[] | null = null
-
-function getSnapshot(): HistoryEntry[] {
-  if (cachedSnapshot === null) cachedSnapshot = listTokens()
-  return cachedSnapshot
-}
-
-function refreshSnapshot(): void {
-  cachedSnapshot = listTokens()
-  for (const fn of listeners) fn()
-}
-
-function subscribe(fn: Listener): () => void {
-  listeners.add(fn)
-  return () => {
-    listeners.delete(fn)
-  }
-}
-
-export function useLinkHistory(): HistoryEntry[] {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
-}
+import { invalidateLinkLists } from './lists'
+import type { DerivedEntry, EntryAction } from './types'
 
 // --- Internal helpers ---
 
@@ -67,15 +31,13 @@ function makeAction<T>(
   return Object.assign(fn, { isPending, error }) as EntryAction<T>
 }
 
-function findRow(token: string): HistoryEntry | undefined {
-  return cachedSnapshot
-    ? cachedSnapshot.find((e) => e.token === token)
-    : listTokens().find((e) => e.token === token)
-}
-
 // --- useLinkEntry ---
+// Single-Link view (LinkDetail). The server is the source of truth (ADR 0009):
+// status comes straight from GET /api/qr/{token}; a 404 surfaces as a query
+// error. Mutations write the fresh Link back into the cache and invalidate the
+// dashboard list so it reflects the change.
 
-export function useLinkEntry(token: string, rowHint?: HistoryEntry): DerivedEntry {
+export function useLinkEntry(token: string): DerivedEntry {
   const queryClient = useQueryClient()
 
   const query = useQuery<GetLinkResponse, ApiError>({
@@ -85,61 +47,36 @@ export function useLinkEntry(token: string, rowHint?: HistoryEntry): DerivedEntr
     enabled: !!token,
   })
 
-  const queryState: QueryState = query.data
-    ? { state: 'success', data: query.data }
-    : query.isError
-      ? { state: 'error', error: query.error }
-      : { state: 'loading' }
-
-  // Row resolution: caller-supplied row is most reliable (Dashboard fan-out);
-  // otherwise look up from snapshot; otherwise synthesize from query data so deep-links work.
-  const lookedUpRow = rowHint ?? findRow(token)
-  const row: HistoryEntry = lookedUpRow ?? {
-    token,
-    originalUrl: query.data?.original_url ?? '',
-    createdAt: query.data?.created_at ?? new Date().toISOString(),
-    dismissed: false,
+  const onLinkMutated = (data: GetLinkResponse) => {
+    queryClient.setQueryData(linkKey(token), data)
+    invalidateLinkLists(queryClient)
   }
-
-  const view = deriveEntry(row, queryState)
 
   const deleteMut = useMutation<void, ApiError>({
     mutationFn: () => deleteLink(token),
     onSuccess() {
-      storageMarkDismissed(token)
-      refreshSnapshot()
       queryClient.setQueryData<GetLinkResponse>(linkKey(token), (prev) =>
         prev ? { ...prev, status: 'deleted' } : prev,
       )
       queryClient.invalidateQueries({ queryKey: linkKey(token) })
+      invalidateLinkLists(queryClient)
     },
   })
 
   const patchExpiresMut = useMutation<GetLinkResponse, ApiError, string | null>({
     mutationFn: (expires_at) => patchLink(token, { expires_at }),
-    onSuccess(data) {
-      queryClient.setQueryData(linkKey(token), data)
-      queryClient.invalidateQueries({ queryKey: linkKey(token) })
-    },
+    onSuccess: onLinkMutated,
   })
 
   const patchUrlMut = useMutation<GetLinkResponse, ApiError, string>({
     mutationFn: (original_url) => patchLink(token, { original_url }),
-    onSuccess(data) {
-      queryClient.setQueryData(linkKey(token), data)
-      queryClient.invalidateQueries({ queryKey: linkKey(token) })
-    },
+    onSuccess: onLinkMutated,
   })
 
   const markDeleted = makeAction<void>(
     () => deleteMut.mutateAsync(),
     deleteMut.isPending,
     deleteMut.error,
-  )
-  const reactivate = makeAction<string>(
-    (date) => patchExpiresMut.mutateAsync(date),
-    patchExpiresMut.isPending,
-    patchExpiresMut.error,
   )
   const updateExpiry = makeAction<string | null>(
     (date) => patchExpiresMut.mutateAsync(date),
@@ -151,61 +88,30 @@ export function useLinkEntry(token: string, rowHint?: HistoryEntry): DerivedEntr
     patchUrlMut.isPending,
     patchUrlMut.error,
   )
-  const removeFromHistory = useCallback(() => {
-    storageRemoveFromHistory(token)
-    refreshSnapshot()
-  }, [token])
 
   return {
     token,
-    originalUrl: row.originalUrl,
-    createdAt: row.createdAt,
-    status: view.status,
-    isLoading: view.isLoading,
-    link: view.link,
-    queryError: view.queryError,
+    status: query.data?.status,
+    isLoading: query.isLoading,
+    link: query.data,
+    queryError: query.isError ? query.error : null,
     markDeleted,
-    reactivate,
     updateExpiry,
     updateUrl,
-    removeFromHistory,
   }
 }
 
 // --- useCreateEntry ---
-// Mints a new Link via POST + writes the new entry into history.
-// Returns the standard TanStack mutation result so callers compose with onSuccess/onError as usual.
+// Mints a new Link via POST. The owner dashboard is server-driven (ADR 0009),
+// so a successful create just invalidates the list — no localStorage write.
+// Returns the standard TanStack mutation result so callers compose onSuccess/onError.
 
 export function useCreateEntry(): UseMutationResult<CreateQrResponse, ApiError, CreateQrRequest> {
+  const queryClient = useQueryClient()
   return useMutation<CreateQrResponse, ApiError, CreateQrRequest>({
-    mutationFn: async (body) => {
-      const res = await createQr(body)
-      addToken({
-        token: res.token,
-        originalUrl: res.original_url,
-        createdAt: new Date().toISOString(),
-      })
-      refreshSnapshot()
-      return res
-    },
-  })
-}
-
-// --- useRecoverEntry ---
-// Verifies a token exists on the server, then writes it into history.
-// 404 is surfaced as a normal mutation error so the UI can show "token not found."
-
-export function useRecoverEntry(): UseMutationResult<GetLinkResponse, ApiError, string> {
-  return useMutation<GetLinkResponse, ApiError, string>({
-    mutationFn: async (token) => {
-      const data = await getLink(token)
-      addToken({
-        token: data.token,
-        originalUrl: data.original_url,
-        createdAt: data.created_at,
-      })
-      refreshSnapshot()
-      return data
+    mutationFn: (body) => createQr(body),
+    onSuccess() {
+      invalidateLinkLists(queryClient)
     },
   })
 }
