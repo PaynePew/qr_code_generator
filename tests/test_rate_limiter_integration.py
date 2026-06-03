@@ -4,15 +4,31 @@ import logging
 import pytest
 from fastapi.testclient import TestClient
 
+from backend import session as session_module
 from backend.main import _maybe_warn_multi_worker, app
 from backend.router import get_db
+
+from tests.conftest import make_user
 
 _counter = itertools.count(1)
 
 
+def _login_as(client, user):
+    """Authenticate the client via a real signed session cookie (ADR 0009).
+
+    The create cap is now keyed by user, and the middleware reads the *cookie's*
+    uid — so a real cookie, not a get_current_user override, is what drives
+    per-user keying. The dual-window create tests here send a fixed IP but rely
+    on this single logged-in user to hit the per-user cap.
+    """
+    config = session_module.SessionConfig()
+    client.cookies.set(session_module.COOKIE_NAME, session_module.issue_session(user.id, config))
+
+
 def _create(client, *, ip="1.2.3.4"):
-    # Send "ip, testproxy" so that with TRUSTED_PROXIES=1 the rate-limiter
-    # resolves to `ip` (entries[-2]) rather than falling back to "testclient".
+    # Send "ip, testproxy" so that with TRUSTED_PROXIES=1 the IP resolves to
+    # `ip` (entries[-2]); the create cap keys by user, so the IP is incidental
+    # here and only matters for the per-IP auth-endpoint tests.
     return client.post(
         "/api/qr/create",
         json={"url": f"https://example.com/p{next(_counter)}"},
@@ -25,6 +41,8 @@ def rate_limiter_enabled(monkeypatch):
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
     monkeypatch.setenv("RATE_LIMIT_HOURLY", "3")
     monkeypatch.setenv("TRUSTED_PROXIES", "1")
+    # Cookie must be storable over the HTTP TestClient for per-user keying.
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "false")
 
 
 @pytest.fixture
@@ -36,7 +54,9 @@ def rl_client(db_session, rate_limiter_enabled):
 
     app.dependency_overrides[get_db] = override_get_db
     RateLimitMiddleware.reset_for_tests()
+    user = make_user(db_session)
     with TestClient(app, raise_server_exceptions=True) as c:
+        _login_as(c, user)
         yield c
     app.dependency_overrides.clear()
 
@@ -61,11 +81,17 @@ def test_nth_plus_one_request_returns_429(rl_client):
     assert "ratelimit-remaining" in r.headers
 
 
-def test_two_ips_are_independent(rl_client):
+def test_capped_user_stays_capped_across_ips(rl_client):
+    """The create cap follows the user, not the IP: changing IP does not reset it.
+
+    (Per-IP independence now lives on the auth endpoint — see
+    test_rate_limiter_per_user.test_auth_cap_two_ips_are_independent.)
+    """
     for _ in range(3):
         _create(rl_client, ip="10.0.0.1")
     assert _create(rl_client, ip="10.0.0.1").status_code == 429
-    assert _create(rl_client, ip="10.0.0.2").status_code == 200
+    # Same logged-in user, different IP — still capped.
+    assert _create(rl_client, ip="10.0.0.2").status_code == 429
 
 
 def test_clock_advance_unlocks_one_more_request(db_session, monkeypatch):
@@ -76,16 +102,21 @@ def test_clock_advance_unlocks_one_more_request(db_session, monkeypatch):
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
     monkeypatch.setenv("RATE_LIMIT_HOURLY", "3")
     monkeypatch.setenv("TRUSTED_PROXIES", "1")
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "false")
     RateLimitMiddleware.reset_for_tests()
 
     clock_time = [0.0]
-    monkeypatch.setattr(mw_module, "_limiter", RateLimiter(hourly_limit=3, clock=lambda: clock_time[0]))
+    monkeypatch.setattr(
+        mw_module, "_create_limiter", RateLimiter(hourly_limit=3, clock=lambda: clock_time[0])
+    )
+    user = make_user(db_session)
 
     def override_get_db():
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app, raise_server_exceptions=True) as c:
+        _login_as(c, user)
         for _ in range(3):
             assert _create(c).status_code == 200
         assert _create(c).status_code == 429
@@ -98,13 +129,16 @@ def test_kill_switch_passthrough_leaves_no_headers(db_session, monkeypatch):
     from backend.rate_limiter.middleware import RateLimitMiddleware
 
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "false")
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "false")
     RateLimitMiddleware.reset_for_tests()
+    user = make_user(db_session)
 
     def override_get_db():
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as c:
+        _login_as(c, user)
         resp = _create(c)
     app.dependency_overrides.clear()
 
@@ -119,19 +153,22 @@ def test_fail_open_when_limiter_raises(db_session, monkeypatch):
 
     monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
     monkeypatch.setenv("RATE_LIMIT_HOURLY", "30")
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "false")
     RateLimitMiddleware.reset_for_tests()
 
     class BrokenLimiter:
-        def check(self, ip):
+        def check(self, key):
             raise RuntimeError("limiter exploded")
 
-    monkeypatch.setattr(mw_module, "_limiter", BrokenLimiter())
+    monkeypatch.setattr(mw_module, "_create_limiter", BrokenLimiter())
+    user = make_user(db_session)
 
     def override_get_db():
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app, raise_server_exceptions=False) as c:
+        _login_as(c, user)
         resp = _create(c)
     app.dependency_overrides.clear()
 
@@ -144,6 +181,10 @@ def test_fail_open_when_limiter_raises(db_session, monkeypatch):
 
 
 def _dual_window_client(db_session, monkeypatch, *, hourly, daily, clock_list):
+    """Build a TestClient logged in as one user, with the *create* limiter's two
+    windows injected on a controllable clock — the create cap is per-user now,
+    so these fairness assertions run against a single authenticated account.
+    """
     import backend.rate_limiter.middleware as mw_module
     from backend.rate_limiter.limiter import RateLimiter
     from backend.rate_limiter.middleware import RateLimitMiddleware
@@ -152,16 +193,21 @@ def _dual_window_client(db_session, monkeypatch, *, hourly, daily, clock_list):
     monkeypatch.setenv("RATE_LIMIT_HOURLY", str(hourly))
     monkeypatch.setenv("RATE_LIMIT_DAILY", str(daily))
     monkeypatch.setenv("TRUSTED_PROXIES", "1")
+    monkeypatch.setenv("SESSION_COOKIE_SECURE", "false")
     RateLimitMiddleware.reset_for_tests()
 
     limiter = RateLimiter(hourly_limit=hourly, daily_limit=daily, clock=lambda: clock_list[0])
-    monkeypatch.setattr(mw_module, "_limiter", limiter)
+    monkeypatch.setattr(mw_module, "_create_limiter", limiter)
+
+    user = make_user(db_session)
 
     def override_get_db():
         yield db_session
 
     app.dependency_overrides[get_db] = override_get_db
-    return TestClient(app, raise_server_exceptions=True)
+    client = TestClient(app, raise_server_exceptions=True)
+    _login_as(client, user)
+    return client
 
 
 def test_hourly_exhausted_daily_has_slack_reports_hourly_retry_after(db_session, monkeypatch):
@@ -236,6 +282,24 @@ def test_startup_validation_daily_less_than_hourly_aborts(monkeypatch):
     monkeypatch.setenv("RATE_LIMIT_HOURLY", "30")
     monkeypatch.setenv("RATE_LIMIT_DAILY", "10")
     with pytest.raises(RuntimeError, match="RATE_LIMIT_DAILY"):
+        _validate_rate_limit_env()
+
+
+def test_startup_validation_auth_daily_less_than_hourly_aborts(monkeypatch):
+    """The relocated per-IP auth limiter shares the create limiter's env-validation contract."""
+    from backend.main import _validate_rate_limit_env
+
+    monkeypatch.setenv("AUTH_RATE_LIMIT_HOURLY", "10")
+    monkeypatch.setenv("AUTH_RATE_LIMIT_DAILY", "4")
+    with pytest.raises(RuntimeError, match="AUTH_RATE_LIMIT_DAILY"):
+        _validate_rate_limit_env()
+
+
+def test_startup_validation_auth_non_integer_aborts(monkeypatch):
+    from backend.main import _validate_rate_limit_env
+
+    monkeypatch.setenv("AUTH_RATE_LIMIT_HOURLY", "lots")
+    with pytest.raises(RuntimeError, match="AUTH_RATE_LIMIT_HOURLY"):
         _validate_rate_limit_env()
 
 
