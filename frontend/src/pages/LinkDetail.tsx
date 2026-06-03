@@ -24,6 +24,7 @@ import { getStyle } from '@/state/styleStore'
 import { create as createRenderer, type QRRenderer } from '@/qr/renderer'
 import { useLinkEntry, type DerivedEntry } from '@/state/linkEntry'
 import { getToastOptions } from '@/lib/toastOptions'
+import { nudgeIfDemoReadOnly } from '@/lib/demoNudge'
 import { computeExpiresAt, resolveExpiresAt, toDatetimeLocalValue, PRESET_LABELS, type ExpiresAtPreset } from '@/lib/expiresAtPresets'
 import { Button } from '@/components/ui/button'
 import { CopyButton } from '@/components/ui/CopyButton'
@@ -305,6 +306,7 @@ function EditUrlForm({
         onSuccess()
       } catch (err) {
         const apiErr = err as ApiError
+        if (nudgeIfDemoReadOnly(apiErr)) return
         if (apiErr.status !== 422) {
           toast.error('更新失敗，請稍後再試。', getToastOptions('error'))
         }
@@ -427,7 +429,8 @@ function EditExpiresAtForm({
       await entry.updateExpiry(resolveExpiresAt(preset, customValue))
       toast.success('到期時間已更新', getToastOptions('success'))
       onSuccess()
-    } catch {
+    } catch (err) {
+      if (nudgeIfDemoReadOnly(err as ApiError)) return
       toast.error('更新失敗，請稍後再試。', getToastOptions('error'))
     }
   }
@@ -542,7 +545,8 @@ export function LinkDetail() {
       await entry.markDeleted()
       setShowDeleteConfirm(false)
       toast.success('連結已刪除', getToastOptions('success'))
-    } catch {
+    } catch (err) {
+      if (nudgeIfDemoReadOnly(err as ApiError)) return
       toast.error('刪除失敗，請稍後再試。', getToastOptions('error'))
     }
   }

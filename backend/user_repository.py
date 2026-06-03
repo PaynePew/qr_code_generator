@@ -21,6 +21,22 @@ def get_user_by_id(db: Session, user_id: int) -> User | None:
     return db.get(User, user_id)
 
 
+def get_demo_user(db: Session) -> User | None:
+    """Return the single shared read-only demo account, or None if unseeded.
+
+    Backs the guest-entry endpoint (ADR 0009): a guest has no Google credential,
+    so the session starts from this row rather than an upsert. There is one demo
+    account by construction (seeded idempotently); the earliest id is returned
+    deterministically if more than one ever exists.
+    """
+    return (
+        db.query(User)
+        .filter(User.is_demo.is_(True))
+        .order_by(User.id.asc())
+        .first()
+    )
+
+
 def upsert_user(db: Session, identity: GoogleIdentity, *, now: datetime) -> User:
     """Create the User on first sign-in, or refresh its profile on a repeat sign-in.
 

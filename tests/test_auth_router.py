@@ -133,3 +133,28 @@ class TestEndSession:
         assert logout.status_code == 200
         # Cookie jar cleared; subsequent me is unauthenticated.
         assert client.get("/api/auth/me").status_code == 401
+
+
+class TestDemoSession:
+    """Guest entry (ADR 0009): "Try as guest" starts a session as the shared
+    read-only demo account with no Google credential — the backend resolves the
+    seeded demo User and issues the same kind of session cookie."""
+
+    def test_enters_demo_account_and_sets_cookie(self, client, db_session):
+        from tests.conftest import make_user
+
+        demo = make_user(db_session, email="demo@example.com", is_demo=True)
+        resp = client.post("/api/auth/demo-session")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["id"] == demo.id
+        assert body["is_demo"] is True
+        assert session_module.COOKIE_NAME in resp.cookies
+        # The session is real: /me now reflects the demo user.
+        assert client.get("/api/auth/me").json()["is_demo"] is True
+
+    def test_returns_503_when_demo_account_not_seeded(self, client):
+        # No demo row exists — this is an ops/seed gap, not a client error.
+        resp = client.post("/api/auth/demo-session")
+        assert resp.status_code == 503
+        assert session_module.COOKIE_NAME not in resp.cookies

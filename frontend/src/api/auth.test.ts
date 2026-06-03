@@ -8,8 +8,15 @@ vi.mock('./client', () => ({
   },
 }))
 
+import type { ApiError } from './client'
 import { apiClient } from './client'
-import { startSession, endSession, getCurrentUser } from './auth'
+import {
+  startSession,
+  endSession,
+  enterDemo,
+  getCurrentUser,
+  isDemoReadOnly,
+} from './auth'
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -90,5 +97,46 @@ describe('endSession', () => {
     const result = await endSession()
 
     expect(result).toBeUndefined()
+  })
+})
+
+describe('enterDemo', () => {
+  it('posts to /api/auth/demo-session with no body (Try as guest)', async () => {
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: { ...mockUser, is_demo: true } })
+
+    await enterDemo()
+
+    expect(apiClient.post).toHaveBeenCalledWith('/api/auth/demo-session')
+  })
+
+  it('returns the demo user', async () => {
+    const demo = { ...mockUser, is_demo: true }
+    vi.mocked(apiClient.post).mockResolvedValueOnce({ data: demo })
+
+    await expect(enterDemo()).resolves.toEqual(demo)
+  })
+})
+
+describe('isDemoReadOnly', () => {
+  function apiError(status: number, code: string): ApiError {
+    return { status, code, detail: '', isNetwork: false }
+  }
+
+  it('is true only for a 403 carrying the DEMO_READ_ONLY code', () => {
+    expect(isDemoReadOnly(apiError(403, 'DEMO_READ_ONLY'))).toBe(true)
+  })
+
+  it('is false for a 403 with any other code (e.g. a generic forbidden)', () => {
+    expect(isDemoReadOnly(apiError(403, '403'))).toBe(false)
+  })
+
+  it('is false for a non-403 status even with the code (owner 404, anon 401)', () => {
+    expect(isDemoReadOnly(apiError(404, 'DEMO_READ_ONLY'))).toBe(false)
+    expect(isDemoReadOnly(apiError(401, 'DEMO_READ_ONLY'))).toBe(false)
+  })
+
+  it('is false for null/undefined', () => {
+    expect(isDemoReadOnly(null)).toBe(false)
+    expect(isDemoReadOnly(undefined)).toBe(false)
   })
 })

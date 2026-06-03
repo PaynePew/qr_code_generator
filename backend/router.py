@@ -11,7 +11,7 @@ from . import analytics
 from . import link_repository
 from . import scan_repository
 from .auth import get_current_user
-from .authorization import authorize_owner
+from .authorization import authorize_owner, forbid_if_demo
 from .database import get_db
 from .link_state import LinkState, derive_state
 from .models import Link, User
@@ -78,6 +78,9 @@ def create_qr(
     # Login-to-create (ADR 0009): get_current_user raises 401 when there is no
     # valid session, so an unauthenticated create never reaches here. The created
     # Link is stamped with the caller as owner.
+    # The demo account is read-only — reject before any work so a guest sees the
+    # DEMO_READ_ONLY login nudge rather than a 422 on a URL it can't even submit.
+    forbid_if_demo(current_user)
     try:
         normalized_url = validate_and_normalize(body.url)
     except InvalidURLError as e:
@@ -195,9 +198,12 @@ def patch_link(
 ):
     # Owner-only (ADR 0009): closes the redirect-hijack hole — a stranger who
     # photographed the QR (the Token is not secret) cannot repoint it. Non-owner
-    # -> 404, authorized before any field is read.
+    # -> 404, authorized before any field is read. Ownership is checked first so a
+    # demo user targeting a Link it doesn't own still gets 404 (no leak); only a
+    # demo user's own Link reaches the read-only 403 DEMO_READ_ONLY.
     link = link_repository.get_link(db, token)
     authorize_owner(link, current_user)
+    forbid_if_demo(current_user)
     now = _now_utc()
 
     fields_to_update = body.model_fields_set & {"original_url", "expires_at"}
@@ -238,9 +244,11 @@ def delete_link(
     current_user: User = Depends(get_current_user),
 ):
     # Owner-only (ADR 0009): only the owner can take down their campaign;
-    # non-owner -> 404.
+    # non-owner -> 404. A demo user owns its seeded Links but is read-only, so
+    # its own delete is rejected 403 DEMO_READ_ONLY (ownership checked first).
     link = link_repository.get_link(db, token)
     authorize_owner(link, current_user)
+    forbid_if_demo(current_user)
     link_repository.mark_deleted(db, link, _now_utc())
     return {"token": token, "status": "deleted"}
 

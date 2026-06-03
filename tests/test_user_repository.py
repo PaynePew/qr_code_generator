@@ -75,3 +75,22 @@ class TestGetUserById:
 
     def test_returns_none_when_absent(self, db_session):
         assert user_repository.get_user_by_id(db_session, 999_999) is None
+
+
+class TestGetDemoUser:
+    """The guest-entry endpoint resolves the single shared demo account here
+    (ADR 0009) — it has no Google credential to upsert from."""
+
+    def test_returns_none_when_no_demo_account_seeded(self, db_session):
+        # A non-demo user existing must not be mistaken for the demo account.
+        user_repository.upsert_user(db_session, IDENTITY, now=NOW)
+        assert user_repository.get_demo_user(db_session) is None
+
+    def test_returns_the_demo_flagged_user(self, db_session):
+        from tests.conftest import make_user
+
+        demo = make_user(db_session, email="demo@example.com", is_demo=True)
+        found = user_repository.get_demo_user(db_session)
+        assert found is not None
+        assert found.id == demo.id
+        assert found.is_demo is True

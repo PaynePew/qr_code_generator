@@ -79,6 +79,25 @@ def start_session(
     return _user_response(user)
 
 
+@auth_router.post("/demo-session")
+def start_demo_session(
+    response: Response,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Start a session as the shared read-only demo account — no credential ("Try
+    as guest", ADR 0009). The demo account is seeded out of band (``demo_seed``);
+    if it is absent that is an ops gap (503), not a client error. The session
+    cookie issued is identical in kind to a real login — read-only is enforced
+    server-side by the ``DEMO_READ_ONLY`` guard, not by a weaker session.
+    """
+    demo = user_repository.get_demo_user(db)
+    if demo is None:
+        raise HTTPException(status_code=503, detail="Demo account is not available")
+
+    _set_session_cookie(response, demo.id, session_module.SessionConfig())
+    return _user_response(demo)
+
+
 @auth_router.delete("/session")
 def end_session(response: Response) -> dict:
     """Clear the session cookie (logout)."""

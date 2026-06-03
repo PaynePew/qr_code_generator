@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 from backend import link_repository
 from backend.auth import get_current_user
-from backend.authorization import authorize_owner
+from backend.authorization import DemoReadOnlyError, authorize_owner, forbid_if_demo
 from backend.link_state import LinkNotFoundError
 from backend.main import app
 from backend.models import Link, User
@@ -112,6 +112,34 @@ class TestAuthorizeOwnerRule:
         # Legacy pre-auth Link (owner_id NULL) is owned by no one -> 404 for all.
         with pytest.raises(LinkNotFoundError):
             authorize_owner(self._link(owner_id=None), self._user(7))
+
+
+# ---------------------------------------------------------------------------
+# Domain rule (framework-free): forbid_if_demo (read-only demo account, ADR 0009)
+# ---------------------------------------------------------------------------
+
+
+class TestForbidIfDemoRule:
+    def _user(self, *, is_demo: bool) -> User:
+        u = User(
+            google_sub="s1",
+            email="x@example.com",
+            created_at=None,
+            last_login_at=None,
+            is_demo=is_demo,
+        )
+        u.id = 1
+        return u
+
+    def test_real_user_passes(self):
+        # No exception means the mutation may proceed.
+        forbid_if_demo(self._user(is_demo=False))
+
+    def test_demo_user_raises_demo_read_only(self):
+        # The shared demo account is read-only by construction (ADR 0009):
+        # any mutation is rejected so the seeded data stays pristine.
+        with pytest.raises(DemoReadOnlyError):
+            forbid_if_demo(self._user(is_demo=True))
 
 
 # ---------------------------------------------------------------------------
@@ -254,3 +282,60 @@ class TestPublicSurfaceUnchanged:
         # Regression: unknown token still 404s (the image endpoint resolves the
         # Link to confirm existence even though the PNG only encodes the URL).
         assert client.get("/api/qr/NOTREAL/image").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Read-only demo account: mutations -> 403 DEMO_READ_ONLY, reads still work
+# ---------------------------------------------------------------------------
+
+
+class TestDemoReadOnly:
+    """ADR 0009: the shared demo account can browse the full dashboard but every
+    mutation is rejected with 403 + code DEMO_READ_ONLY (so the frontend renders
+    a login nudge, not a raw error). The 403 must beat an owner-404: the demo
+    user owns its seeded Links, yet still cannot PATCH/DELETE them.
+    """
+
+    def test_demo_create_is_forbidden(self, db_session, as_user):
+        demo = make_user(db_session, email="demo@example.com", is_demo=True)
+        resp = as_user(demo).post("/api/qr/create", json={"url": NOW_URL})
+        assert resp.status_code == 403
+        assert resp.json()["code"] == "DEMO_READ_ONLY"
+
+    def test_demo_patch_own_link_is_forbidden_with_code(self, db_session, as_user):
+        demo = make_user(db_session, email="demo@example.com", is_demo=True)
+        token = _mint_owned(db_session, demo)  # demo owns it
+        resp = as_user(demo).patch(
+            f"/api/qr/{token}", json={"original_url": "https://example.com/new"}
+        )
+        assert resp.status_code == 403
+        assert resp.json()["code"] == "DEMO_READ_ONLY"
+
+    def test_demo_delete_own_link_is_forbidden_with_code(self, db_session, as_user):
+        demo = make_user(db_session, email="demo@example.com", is_demo=True)
+        token = _mint_owned(db_session, demo)
+        resp = as_user(demo).delete(f"/api/qr/{token}")
+        assert resp.status_code == 403
+        assert resp.json()["code"] == "DEMO_READ_ONLY"
+
+    def test_demo_patch_does_not_mutate_the_link(self, db_session, as_user):
+        demo = make_user(db_session, email="demo@example.com", is_demo=True)
+        token = _mint_owned(db_session, demo)
+        as_user(demo).patch(
+            f"/api/qr/{token}", json={"original_url": "https://example.com/changed"}
+        )
+        # The seeded destination is untouched — read-only really means read-only.
+        assert as_user(demo).get(f"/api/qr/{token}").json()["original_url"] == NOW_URL
+
+    def test_demo_can_read_dashboard_list(self, db_session, as_user):
+        demo = make_user(db_session, email="demo@example.com", is_demo=True)
+        _mint_owned(db_session, demo)
+        resp = as_user(demo).get("/api/qr")
+        assert resp.status_code == 200
+        assert len(resp.json()["items"]) == 1
+
+    def test_demo_can_read_own_link_info_and_analytics(self, db_session, as_user):
+        demo = make_user(db_session, email="demo@example.com", is_demo=True)
+        token = _mint_owned(db_session, demo)
+        assert as_user(demo).get(f"/api/qr/{token}").status_code == 200
+        assert as_user(demo).get(f"/api/qr/{token}/analytics").status_code == 200

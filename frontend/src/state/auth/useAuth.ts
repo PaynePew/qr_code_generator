@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { currentUserKey } from '@/api/queryKeys'
 import type { ApiError } from '@/api/client'
-import { startSession, endSession, type AuthUser } from '@/api/auth'
+import { startSession, endSession, enterDemo, type AuthUser } from '@/api/auth'
 import { fetchSessionUser } from './session'
 import { getGoogleIdentity } from './googleIdentity'
 
@@ -9,7 +9,9 @@ export interface UseAuthResult {
   user: AuthUser | null
   isLoading: boolean
   isAuthenticated: boolean
+  isDemo: boolean
   login: (credential: string) => Promise<AuthUser>
+  loginAsGuest: () => Promise<AuthUser>
   logout: () => Promise<void>
 }
 
@@ -35,6 +37,15 @@ export function useAuth(): UseAuthResult {
     },
   })
 
+  // "Try as guest" — start a session as the shared read-only demo account. Same
+  // write-through as a real login so the UI immediately reflects the demo user.
+  const guestMutation = useMutation<AuthUser, ApiError>({
+    mutationFn: () => enterDemo(),
+    onSuccess(user) {
+      queryClient.setQueryData(currentUserKey(), user)
+    },
+  })
+
   const logoutMutation = useMutation<void, ApiError>({
     mutationFn: () => endSession(),
     onSuccess() {
@@ -50,7 +61,9 @@ export function useAuth(): UseAuthResult {
     user,
     isLoading: query.isLoading,
     isAuthenticated: user !== null,
+    isDemo: user?.is_demo ?? false,
     login: (credential) => loginMutation.mutateAsync(credential),
+    loginAsGuest: () => guestMutation.mutateAsync(),
     logout: () => logoutMutation.mutateAsync(),
   }
 }

@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from .auth_router import auth_router
+from .authorization import DemoReadOnlyError
 from .link_state import LinkAlreadyDeletedError, LinkNotFoundError
 from .router import router, redirect_router
 from .rate_limiter.middleware import RateLimitMiddleware
@@ -125,6 +126,17 @@ async def _link_not_found(_: Request, exc: LinkNotFoundError) -> JSONResponse:
 @app.exception_handler(LinkAlreadyDeletedError)
 async def _link_already_deleted(_: Request, exc: LinkAlreadyDeletedError) -> JSONResponse:
     return JSONResponse(status_code=410, content={"detail": "Link is deleted"})
+
+
+@app.exception_handler(DemoReadOnlyError)
+async def _demo_read_only(_: Request, exc: DemoReadOnlyError) -> JSONResponse:
+    # ADR 0009: the read-only demo account hit a mutation. The body carries a
+    # distinct `code` so the frontend renders a "log in to create" nudge instead
+    # of a generic error (it cannot infer demo-ness from the 403 alone).
+    return JSONResponse(
+        status_code=403,
+        content={"detail": "Demo account is read-only", "code": "DEMO_READ_ONLY"},
+    )
 
 
 app.include_router(auth_router)
