@@ -31,6 +31,7 @@ export default defineConfig(({ mode }) => {
         ['src/**/*.hook.test.tsx', 'jsdom'],
       ],
       globals: true,
+      setupFiles: ['./src/test-setup.ts'],
     },
   }
 })
