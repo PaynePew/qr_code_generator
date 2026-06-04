@@ -62,8 +62,9 @@ Upload a composite + a logo, then check public reachability:
 Both PUT and DELETE under `qr/*` succeed with the `qrgen-app` credentials, confirming the
 least-privilege policy is sufficient.
 
-## Outstanding (NOT part of 6c0)
+## Storage gateway wiring (resolved)
 
-`backend/router.py:51` hardcodes `_storage_gateway = InMemoryGateway()`. Nothing yet swaps
-in `S3Gateway` from env, so the running app does not use this bucket until that wiring
-lands. Tracked separately (backend slice).
+`backend/main.py`'s lifespan calls `build_storage_gateway(os.environ)`, which returns an
+`S3Gateway` when `AWS_S3_BUCKET` + `AWS_REGION` are set and an `InMemoryGateway` otherwise.
+The running app uses this bucket once those vars are present; on S3 misconfiguration the app
+refuses to start rather than silently falling back to in-process storage.
