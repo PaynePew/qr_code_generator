@@ -1,0 +1,11 @@
+[Unit]
+Description=qrcode nightly Postgres backup to S3
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=deploy
+WorkingDirectory=/opt/qrcode
+EnvironmentFile=/opt/qrcode/.env.backup
+ExecStart=/opt/qrcode/backup.sh

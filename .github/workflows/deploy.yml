@@ -1,0 +1,146 @@
+# CD — build + push the prod image, then (Phase-2-gated) deploy to the shared VPS.
+#
+# DEPLOYMENT MODEL (image-pull; no source tree on the box):
+#   - CI builds + pushes the PRIVATE image ghcr.io/paynepew/qr_code_generator,
+#     tagged with the commit SHA AND `latest`, for linux/amd64 only.
+#   - Deploy = SSH to the box, scp the two non-secret runtime files, then
+#     `docker compose pull` + `up -d` pulling by IMAGE_TAG = the commit SHA.
+#
+# TWO JOBS, DIFFERENT READINESS:
+#   - build  : works IMMEDIATELY. Only needs the built-in GITHUB_TOKEN with
+#              `packages: write` to PUSH to GHCR. Runs on every push to main.
+#   - deploy : Phase-2-GATED. It does NOT run on every main push because the box
+#              and its secrets may not exist yet. It runs ONLY on a manual
+#              workflow_dispatch OR when repo variable DEPLOY_ENABLED == "true".
+#              Before it can SUCCEED, the box owner must have placed (ONCE):
+#                * the deploy public key matching secret SSH_PRIVATE_KEY
+#                  (authorized for deploy@box.paynepew.dev),
+#                * an owner-installed GHCR read:packages PAT so the box can
+#                  `docker login ghcr.io` and PULL the private image
+#                  (CI passes NO pull credential — pull auth lives on the box),
+#                * the secret/needs-sudo files: .env.prod, .env.backup, the
+#                  systemd unit + timer, and the aws cli. CD NEVER touches those.
+
+name: CD
+
+on:
+  push:
+    branches: [main]          # always build + push the image
+  workflow_dispatch:          # manual trigger (also the way to deploy)
+
+# Serialize deploys to the box; never cancel an in-flight deploy.
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+# Non-sensitive deploy coordinates — only the SSH KEY is a secret. Kept at the
+# top so the box hostname / user / dir are easy to change in one place.
+env:
+  DEPLOY_HOST: box.paynepew.dev
+  DEPLOY_USER: deploy
+  DEPLOY_DIR: /opt/qrcode
+  IMAGE: ghcr.io/paynepew/qr_code_generator
+
+jobs:
+  build:
+    name: Build + push image (GHCR)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read            # checkout
+      packages: write           # push to GHCR with the built-in GITHUB_TOKEN
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: "Build + push (linux/amd64) — tags: <sha> and latest"
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to box (Phase-2-gated)
+    needs: build
+    runs-on: ubuntu-latest
+    # GATE: only deploy on a manual run OR once the owner flips repo variable
+    # DEPLOY_ENABLED to the string "true". Until then, build runs but deploy skips.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      vars.DEPLOY_ENABLED == 'true'
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      # Load the deploy private key into an ssh-agent for this job, and trust the
+      # box's host key via ssh-keyscan so ssh/scp don't prompt. The matching
+      # PUBLIC key is owner-installed on deploy@box.paynepew.dev (Phase 2).
+      - name: Start ssh-agent with deploy key
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Add box to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          chmod 644 ~/.ssh/known_hosts
+
+      # Ship the non-secret, no-sudo runtime files (compose + the backup and
+      # restore-drill scripts) flat into $DEPLOY_DIR. NEVER scp .env.prod,
+      # .env.backup, or any other secret — those are owner-placed on the box once.
+      - name: Copy runtime files to the box
+        run: |
+          scp ./docker-compose.prod.yml ./backup.sh ./deploy/restore-drill.sh \
+            "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/"
+
+      # Pull the image by the exact commit SHA, then bring the stack up. The box
+      # is already `docker login`'d to GHCR with the owner's read:packages PAT.
+      - name: Pull + up (by commit SHA)
+        run: |
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" \
+            "cd '$DEPLOY_DIR' && \
+             export IMAGE_TAG='${{ github.sha }}' && \
+             docker compose -f docker-compose.prod.yml pull && \
+             docker compose -f docker-compose.prod.yml up -d"
+
+      # Post-deploy smoke: poll the container's healthcheck status. No curl —
+      # the python:slim app image has none; the compose healthcheck itself uses
+      # python urllib. We just read State.Health.Status via docker inspect.
+      - name: Smoke — wait for qrcode-app to report healthy
+        run: |
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" 'bash -s' <<'SMOKE'
+          set -euo pipefail
+          deadline=$(( $(date +%s) + 90 ))
+          while true; do
+            status="$(docker inspect --format '{{.State.Health.Status}}' qrcode-app 2>/dev/null || echo missing)"
+            echo "qrcode-app health: $status"
+            if [ "$status" = "healthy" ]; then
+              echo "qrcode-app is healthy."
+              exit 0
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "Timed out after ~90s waiting for qrcode-app to become healthy (last: $status)."
+              docker compose -f docker-compose.prod.yml ps || true
+              exit 1
+            fi
+            sleep 5
+          done
+          SMOKE

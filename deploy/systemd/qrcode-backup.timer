@@ -1,0 +1,18 @@
+# qrcode nightly backup timer.
+#
+# Owner install (one-time, as root on the box):
+#   cp qrcode-backup.service qrcode-backup.timer /etc/systemd/system/
+#   systemctl daemon-reload
+#   systemctl enable --now qrcode-backup.timer
+#
+# Inspect:   systemctl list-timers qrcode-backup.timer
+#            journalctl -u qrcode-backup.service
+[Unit]
+Description=Run qrcode Postgres backup daily at 18:00 UTC
+
+[Timer]
+OnCalendar=*-*-* 18:00:00 UTC
+Persistent=true
+
+[Install]
+WantedBy=timers.target
