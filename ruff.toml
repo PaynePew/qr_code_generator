@@ -1,11 +1,9 @@
 # Ruff lint config (CI Tier 2 gate).
 #
-# Conservative on purpose: ruff's default rule set (E4/E7/E9 pycodestyle errors
-# + F Pyflakes) only. No E501 line-length and no import-sort (I) rules, to avoid
-# reformatting churn on the existing codebase. Tighten incrementally later
-# (tracked in qr_code_generator-38x).
+# ruff defaults (E4/E7/E9 pycodestyle errors + F Pyflakes) plus import sorting (I).
+# No E501 line-length yet (avoids wrapping churn). `ruff format` enforces
+# formatting separately in CI.
 target-version = "py312"
 
 [lint]
-# Empty = ruff defaults (E4, E7, E9, F). Listed explicitly for clarity.
-select = ["E4", "E7", "E9", "F"]
+select = ["E4", "E7", "E9", "F", "I"]

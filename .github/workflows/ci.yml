@@ -27,6 +27,47 @@ jobs:
       - name: ruff check
         run: ruff check backend tests
 
+      - name: ruff format --check
+        run: ruff format --check backend tests
+
+  migrations:
+    name: Migrations (alembic drift)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: qr_codes
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/qr_codes
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Apply migrations
+        run: alembic upgrade head
+
+      - name: Check models match migrations (no drift)
+        # Fails if the SQLAlchemy models would autogenerate a non-empty migration
+        # against the upgraded schema — i.e. a migration is missing.
+        run: alembic check
+
   backend:
     name: Backend (pytest)
     runs-on: ubuntu-latest # has Docker preinstalled for testcontainers (Postgres 16)
