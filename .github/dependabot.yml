@@ -33,6 +33,17 @@ updates:
       # tailwind-merge v3 targets Tailwind CSS v4; held until that migration.
       - dependency-name: "tailwind-merge"
         update-types: ["version-update:semver-major"]
+      # Held pending a deliberate frontend tooling upgrade (see bead):
+      # TypeScript 6 deprecates tsconfig `baseUrl`.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      # eslint-plugin-react-hooks v6 adds stricter rules (setState-in-effect,
+      # refs-during-render) that flag existing idiomatic code.
+      - dependency-name: "eslint-plugin-react-hooks"
+        update-types: ["version-update:semver-major"]
+      # lucide-react removed the `Github` brand icon (used in Header); breaking
+      # changes ship as 0.x minor bumps, so hold all updates until migrated.
+      - dependency-name: "lucide-react"
 
   # GitHub Actions used by the workflows — grouped.
   - package-ecosystem: github-actions
