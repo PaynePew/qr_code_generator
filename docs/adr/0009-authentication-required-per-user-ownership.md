@@ -1,6 +1,6 @@
 # ADR 0009: Authentication required; per-user ownership (supersedes ADR 0005)
 
-**Status:** Accepted — design locked during grilling; implemented in Phase 1 of the multi-tenant roadmap (`.docs-local/roadmap.md`).
+**Status:** Accepted — design locked during grilling; implemented in Phase 1 of the multi-tenant roadmap (`docs/roadmap.md`).
 
 ## Context
 
