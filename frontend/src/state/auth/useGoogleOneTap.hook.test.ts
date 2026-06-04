@@ -9,7 +9,7 @@
  * to re-import the module with the env var set before each describe block.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { renderHook, act, waitFor } from '@testing-library/react'
+import { renderHook, act, waitFor, cleanup } from '@testing-library/react'
 
 const REAL_CLIENT_ID = 'test-client-id.apps.googleusercontent.com'
 
@@ -28,10 +28,13 @@ async function importWithClientId(clientId: string) {
     loadGoogleScript: vi.fn(),
   }))
 
-  const [{ useGoogleOneTap }, gi] = await Promise.all([
-    import('./useGoogleOneTap'),
-    import('./googleIdentity'),
-  ])
+  // Import the mocked module FIRST so the doMock is fully registered before the
+  // hook (which imports './googleIdentity' at module load) resolves. A concurrent
+  // Promise.all import occasionally bound the REAL googleIdentity, whose
+  // loadGoogleScript awaits a <script> onload that never fires in jsdom — hanging
+  // the test until timeout. Sequential import closes that race window.
+  const gi = await import('./googleIdentity')
+  const { useGoogleOneTap } = await import('./useGoogleOneTap')
 
   return {
     useGoogleOneTap,
@@ -52,6 +55,10 @@ function makeGsiApi() {
 }
 
 afterEach(() => {
+  // Unmount any hook left mounted by the test so its pending init() promise
+  // (which awaits loadGoogleScript) is cancelled and cannot leak state updates
+  // into the next test's timing.
+  cleanup()
   vi.unstubAllEnvs()
   vi.resetModules()
 })

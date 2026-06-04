@@ -32,6 +32,10 @@ export default defineConfig(({ mode }) => {
       ],
       globals: true,
       setupFiles: ['./src/test-setup.ts'],
+      // waitFor headroom (asyncUtilTimeout=5000 in test-setup) must stay below
+      // testTimeout so a stuck waitFor fails with a clean assertion instead of
+      // hanging the whole test to the default 5000ms test timeout.
+      testTimeout: 20000,
     },
   }
 })
