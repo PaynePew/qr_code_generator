@@ -11,12 +11,24 @@
 
 ---
 
-## ⏯️ Session state — RESUME HERE (last updated 2026-06-03)
+## ⏯️ Session state — RESUME HERE (last updated 2026-06-04)
 
-**Foundation (Phases 0–2) is implemented and landed on `main`. Phases 3–5 are grilled and
-documented** (ADR 0010–0013 + CONTEXT.md + `.docs-local/prd-link-customization-and-labels.md`) but
-**not yet implemented**. Grilling continues just-in-time from **Phase 6**. *(The Phase 0–2 grilling
-log below is historical — see the Phase overview table for authoritative current status.)*
+**Foundation (Phases 0–2) AND Phases 3–5 are now implemented and landed on `main`.** Phases 3–5
+shipped via PR #67 (slices `ql8` error-envelope, `ai0` labels, `jn4` login tests, `hkb` server-side
+QR storage, `oor` structured logging, `mcc` frontend save/restore) plus follow-ups `rxi` (wire
+`S3Gateway` at startup), `6bs` (require `SECRET` env), `8s9` (wire logging helpers into the request
+path), and `tl8` (`boto3` + `python-multipart` deps). Grilling continues just-in-time from **Phase 6**.
+*(The Phase 0–2 grilling log below is historical — see the Phase overview table for authoritative status.)*
+
+> **🆕 2026-06-04 — Phase 4 infra provisioned + CI/CD added.**
+> - **S3 (bead `6c0`, HITL, DONE):** bucket `qrgen-customized-prod` (ap-northeast-1) — versioning +
+>   noncurrent-version lifecycle, public-read composites / private logos, CORS, least-privilege IAM
+>   (`qrgen-app`). Smoke-tested (composite 200 / logo 403). Creds in deploy `.env` (uncommitted).
+>   Facts in `docs/deploy/s3-customized-qr-storage.md`. → unblocks Phase 6 deploy.
+> - **Engineering CI/CD (3 tiers):** `.github/workflows/ci.yml` runs **Lint (ruff)** + **Backend
+>   (pytest, 425)** + **Frontend (typecheck/vitest/build)** on every PR + push to `main`; `main` now
+>   has **branch protection** requiring all three. Fixed a flaky `useGoogleOneTap` test + 33 ruff
+>   violations along the way. Remaining CI follow-ups tracked in bead `qr_code_generator-38x`.
 
 > **📥 2026-06-03 — 7 demo-architecture topics filed for later discussion** (user request):
 > landed in Phases 2/4/6 (💬 markers) + new Phases 8 (caching/CDN) / 9 (analytics & daily report) /
@@ -97,16 +109,16 @@ log below is historical — see the Phase overview table for authoritative curre
 | 0 | Fix token allocation bug (random nonce) | #4 | — | 🟢 decided |
 | 1 | Multi-tenant identity (Google OAuth + User + owner_id) | #1 | 0 | 🟢 decided (ADR 0009) |
 | 2 | Database: engine / hosting / migrations / backups | 🆕 | 1 | 🟢 decided · 💬 cleanup→P9 |
-| 3 | Ownership & duplicate-URL / token-collision rules | #5 | 0+1 | 🟢 decided (ADR 0010) |
-| 4 | QR image object storage (**S3**) | #2 | 1 | 🟢 decided (ADR 0011) |
-| 5 | Unified error handling & logging interface | 🆕 | 1–4 | 🟢 decided (ADR 0012, 0013) |
+| 3 | Ownership & duplicate-URL / token-collision rules | #5 | 0+1 | ✅ implemented (ADR 0010) |
+| 4 | QR image object storage (**S3**) | #2 | 1 | ✅ implemented (ADR 0011) · S3 provisioned (6c0) |
+| 5 | Unified error handling & logging interface | 🆕 | 1–4 | ✅ implemented (ADR 0012, 0013) |
 | 6 | Lightsail deployment (qrcode.paynepew.dev) | #3 | 2+5 | ⚪ pending · 💬 +infra rate-limit |
 | 7 | Frontend redesign (frontend-design) | #6 | 1+4 | ⚪ pending |
 | 8 | Caching & CDN (Redis + CDN purge + SWR) | 🆕 06-03 | 1+4 | 💬 to discuss |
 | 9 | Analytics & daily reporting (SQS → S3 → batch) | 🆕 06-03 | 1+2 | 💬 to discuss |
 | 10 | Production hardening: URL safety & SSRF | 🆕 06-03 | 1 | 💬 to discuss |
 
-Legend: 🔵 grilling · 🟢 decided · ⚪ pending · 💬 discussion topic queued
+Legend: 🔵 grilling · 🟢 decided · ✅ implemented (on `main`) · ⚪ pending · 💬 discussion topic queued
 
 ---
 
@@ -479,3 +491,16 @@ serve time (`GET /r/{token}`) or only at mint?
   mutation-on-deleted→409; distinct upload codes. JSON logs + correlation id (X-Request-ID,
   contextvars) + post-auth user_id. NO raw IP in logs (redirect none; abuse hashed/truncated) —
   extends ADR 0006. Sentry deferred; 30-day retention.
+- **2026-06-04** — Phases 3–5 **implemented** and merged to `main` (PR #67 squash → later rewritten to
+  the real per-commit history). Slices: `ql8` error envelope · `ai0` labels · `jn4` login tests ·
+  `hkb` server-side QR storage (`StorageGateway`, alembic 0005) · `oor` structured logging · `mcc`
+  frontend save/restore. Then `rxi`/`6bs`/`8s9` (run via the slice-orchestrator workflow) + `tl8`.
+- **2026-06-04** — Phase 4 **S3 provisioned** (bead `6c0`, HITL, DONE): bucket `qrgen-customized-prod`
+  (ap-northeast-1) — versioning + noncurrent-version lifecycle, public-read composites / private logos,
+  CORS, least-privilege IAM `qrgen-app`. Smoke-tested (composite 200 / logo 403). Creds in deploy `.env`
+  (uncommitted). Documented in `docs/deploy/s3-customized-qr-storage.md`. → Phase 6 deploy unblocked.
+- **2026-06-04** — **CI/CD added (3 tiers):** `ci.yml` = Lint (ruff) + Backend (pytest 425) + Frontend
+  (typecheck/vitest/build) on every PR + push to `main`; `main` branch protection requires all three
+  (no required reviews — solo; admins can bypass). Surfaced + fixed a flaky `useGoogleOneTap` test
+  (mock-miss race → real `loadGoogleScript` hung in jsdom) and 33 ruff violations. Follow-ups
+  (ruff format, Dependabot, alembic drift check) tracked in bead `qr_code_generator-38x`.
