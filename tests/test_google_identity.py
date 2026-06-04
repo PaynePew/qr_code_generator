@@ -6,6 +6,7 @@ rejection), not that Google's own crypto works. ADR 0009 requires verifying
 signature, audience, issuer and expiry; google-auth's verify_oauth2_token does
 that and raises ValueError / GoogleAuthError on failure, which we normalize.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -78,7 +79,9 @@ class TestVerifyRejectsBadTokens:
             google_identity.verify_google_id_token("wrong-aud", CLIENT_ID)
 
     def test_rejects_bad_signature(self, monkeypatch):
-        _patch_verify(monkeypatch, raises=ValueError("Could not verify token signature"))
+        _patch_verify(
+            monkeypatch, raises=ValueError("Could not verify token signature")
+        )
         with pytest.raises(InvalidGoogleTokenError):
             google_identity.verify_google_id_token("bad-sig", CLIENT_ID)
 

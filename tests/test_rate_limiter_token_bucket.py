@@ -2,7 +2,11 @@ from backend.rate_limiter.token_bucket import TokenBucket
 
 
 def _bucket(capacity=10, refill_rate=1.0, tokens=None):
-    return TokenBucket(capacity=capacity, refill_rate=refill_rate, tokens=tokens if tokens is not None else float(capacity))
+    return TokenBucket(
+        capacity=capacity,
+        refill_rate=refill_rate,
+        tokens=tokens if tokens is not None else float(capacity),
+    )
 
 
 def test_fresh_bucket_allows_first_request():

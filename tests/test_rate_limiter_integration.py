@@ -7,7 +7,6 @@ from fastapi.testclient import TestClient
 from backend import session as session_module
 from backend.main import _maybe_warn_multi_worker, app
 from backend.router import get_db
-
 from tests.conftest import make_user
 
 _counter = itertools.count(1)
@@ -22,7 +21,9 @@ def _login_as(client, user):
     on this single logged-in user to hit the per-user cap.
     """
     config = session_module.SessionConfig()
-    client.cookies.set(session_module.COOKIE_NAME, session_module.issue_session(user.id, config))
+    client.cookies.set(
+        session_module.COOKIE_NAME, session_module.issue_session(user.id, config)
+    )
 
 
 def _create(client, *, ip="1.2.3.4"):
@@ -110,7 +111,9 @@ def test_clock_advance_unlocks_one_more_request(db_session, monkeypatch):
 
     clock_time = [0.0]
     monkeypatch.setattr(
-        mw_module, "_create_limiter", RateLimiter(hourly_limit=3, clock=lambda: clock_time[0])
+        mw_module,
+        "_create_limiter",
+        RateLimiter(hourly_limit=3, clock=lambda: clock_time[0]),
     )
     user = make_user(db_session)
 
@@ -199,7 +202,9 @@ def _dual_window_client(db_session, monkeypatch, *, hourly, daily, clock_list):
     monkeypatch.setenv("SESSION_COOKIE_SECURE", "false")
     RateLimitMiddleware.reset_for_tests()
 
-    limiter = RateLimiter(hourly_limit=hourly, daily_limit=daily, clock=lambda: clock_list[0])
+    limiter = RateLimiter(
+        hourly_limit=hourly, daily_limit=daily, clock=lambda: clock_list[0]
+    )
     monkeypatch.setattr(mw_module, "_create_limiter", limiter)
 
     user = make_user(db_session)
@@ -213,9 +218,13 @@ def _dual_window_client(db_session, monkeypatch, *, hourly, daily, clock_list):
     return client
 
 
-def test_hourly_exhausted_daily_has_slack_reports_hourly_retry_after(db_session, monkeypatch):
+def test_hourly_exhausted_daily_has_slack_reports_hourly_retry_after(
+    db_session, monkeypatch
+):
     clock = [0.0]
-    c = _dual_window_client(db_session, monkeypatch, hourly=3, daily=10, clock_list=clock)
+    c = _dual_window_client(
+        db_session, monkeypatch, hourly=3, daily=10, clock_list=clock
+    )
     with c:
         for _ in range(3):
             assert _create(c).status_code == 200
@@ -227,9 +236,13 @@ def test_hourly_exhausted_daily_has_slack_reports_hourly_retry_after(db_session,
     assert int(r.headers["retry-after"]) < 2000
 
 
-def test_daily_exhausted_hourly_has_slack_reports_daily_retry_after(db_session, monkeypatch):
+def test_daily_exhausted_hourly_has_slack_reports_daily_retry_after(
+    db_session, monkeypatch
+):
     clock = [0.0]
-    c = _dual_window_client(db_session, monkeypatch, hourly=3, daily=4, clock_list=clock)
+    c = _dual_window_client(
+        db_session, monkeypatch, hourly=3, daily=4, clock_list=clock
+    )
     with c:
         # exhaust hourly at t=0; daily still has 1 token
         for _ in range(3):
@@ -251,7 +264,9 @@ def test_clock_advances_past_hourly_daily_still_exhausted_returns_daily_retry_af
 ):
     clock = [0.0]
     # Equal limits are valid (daily >= hourly is satisfied)
-    c = _dual_window_client(db_session, monkeypatch, hourly=3, daily=3, clock_list=clock)
+    c = _dual_window_client(
+        db_session, monkeypatch, hourly=3, daily=3, clock_list=clock
+    )
     with c:
         for _ in range(3):
             assert _create(c).status_code == 200
@@ -269,7 +284,9 @@ def test_clock_advances_past_hourly_daily_still_exhausted_returns_daily_retry_af
 
 def test_ratelimit_remaining_reports_min_across_buckets(db_session, monkeypatch):
     clock = [0.0]
-    c = _dual_window_client(db_session, monkeypatch, hourly=3, daily=5, clock_list=clock)
+    c = _dual_window_client(
+        db_session, monkeypatch, hourly=3, daily=5, clock_list=clock
+    )
     with c:
         _create(c)  # after: hourly=2, daily=4  → min=2
         resp = _create(c)  # after: hourly=1, daily=3  → min=1
@@ -332,7 +349,9 @@ def test_startup_validation_trusted_proxies_zero_is_valid(monkeypatch):
 # ── Multi-worker startup warning (AC 5) ─────────────────────────────────────
 
 
-def test_multi_worker_startup_warning_emitted_when_web_concurrency_gt_1(monkeypatch, caplog):
+def test_multi_worker_startup_warning_emitted_when_web_concurrency_gt_1(
+    monkeypatch, caplog
+):
     """WARNING is emitted at startup when WEB_CONCURRENCY > 1."""
     monkeypatch.setenv("WEB_CONCURRENCY", "4")
     monkeypatch.delenv("UVICORN_WORKERS", raising=False)
@@ -340,11 +359,15 @@ def test_multi_worker_startup_warning_emitted_when_web_concurrency_gt_1(monkeypa
     with caplog.at_level(logging.WARNING):
         _maybe_warn_multi_worker()
 
-    warning_msgs = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    warning_msgs = [
+        r.getMessage() for r in caplog.records if r.levelno == logging.WARNING
+    ]
     assert any("worker" in m.lower() for m in warning_msgs)
 
 
-def test_multi_worker_startup_warning_emitted_when_uvicorn_workers_gt_1(monkeypatch, caplog):
+def test_multi_worker_startup_warning_emitted_when_uvicorn_workers_gt_1(
+    monkeypatch, caplog
+):
     """WARNING is emitted at startup when UVICORN_WORKERS > 1."""
     monkeypatch.delenv("WEB_CONCURRENCY", raising=False)
     monkeypatch.setenv("UVICORN_WORKERS", "2")
@@ -352,7 +375,9 @@ def test_multi_worker_startup_warning_emitted_when_uvicorn_workers_gt_1(monkeypa
     with caplog.at_level(logging.WARNING):
         _maybe_warn_multi_worker()
 
-    warning_msgs = [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+    warning_msgs = [
+        r.getMessage() for r in caplog.records if r.levelno == logging.WARNING
+    ]
     assert any("worker" in m.lower() for m in warning_msgs)
 
 
@@ -365,7 +390,8 @@ def test_no_multi_worker_warning_for_single_worker(monkeypatch, caplog):
         _maybe_warn_multi_worker()
 
     worker_warnings = [
-        r for r in caplog.records
+        r
+        for r in caplog.records
         if r.levelno == logging.WARNING and "worker" in r.getMessage().lower()
     ]
     assert len(worker_warnings) == 0

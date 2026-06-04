@@ -5,6 +5,7 @@ User; a repeat sign-in for the same google_sub updates the mutable profile
 fields and last_login_at without minting a second row (ADR 0009 keys identity on
 Google's stable subject id).
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta

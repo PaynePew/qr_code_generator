@@ -1,4 +1,4 @@
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from backend.models import Link
 from backend.qr_generator import generate_qr_png
@@ -7,6 +7,7 @@ PNG_MAGIC = b"\x89PNG"
 
 
 # --- unit tests for qr_generator ---
+
 
 class TestQrGenerator:
     def test_returns_bytes(self):
@@ -28,6 +29,7 @@ class TestQrGenerator:
 
 
 # --- integration tests for GET /api/qr/{token}/image ---
+
 
 def _insert_link(db_session, token, deleted=False, expired=False):
     now = datetime.now(timezone.utc).replace(tzinfo=None)

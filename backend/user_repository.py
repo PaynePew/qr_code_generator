@@ -6,6 +6,7 @@ Postgres ``INSERT ... ON CONFLICT (google_sub) DO UPDATE`` so a concurrent
 first-login race resolves to a single row atomically instead of a unique-
 violation, and a returning login refreshes the mutable profile in one statement.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -29,12 +30,7 @@ def get_demo_user(db: Session) -> User | None:
     account by construction (seeded idempotently); the earliest id is returned
     deterministically if more than one ever exists.
     """
-    return (
-        db.query(User)
-        .filter(User.is_demo.is_(True))
-        .order_by(User.id.asc())
-        .first()
-    )
+    return db.query(User).filter(User.is_demo.is_(True)).order_by(User.id.asc()).first()
 
 
 def upsert_user(db: Session, identity: GoogleIdentity, *, now: datetime) -> User:

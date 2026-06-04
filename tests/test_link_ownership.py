@@ -9,6 +9,7 @@ Behavioral coverage for the ownership slice:
 Owner-only authorization on info/analytics/PATCH/DELETE (non-owner -> 404) is a
 separate slice and is intentionally not asserted here.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -17,7 +18,6 @@ from sqlalchemy import inspect
 
 from backend import link_repository
 from backend.models import Link
-
 from tests.conftest import make_user
 
 NOW = datetime(2026, 6, 3, 12, 0, 0)
@@ -35,7 +35,9 @@ class TestLoginToCreate:
         assert db_session.query(Link).count() == 0
 
     def test_authenticated_create_returns_200(self, auth_client):
-        resp = auth_client.post("/api/qr/create", json={"url": "https://example.com/ok"})
+        resp = auth_client.post(
+            "/api/qr/create", json={"url": "https://example.com/ok"}
+        )
         assert resp.status_code == 200
 
     def test_authenticated_create_stamps_owner(self, auth_client, owner, db_session):
@@ -64,7 +66,9 @@ class TestOwnershipMigration:
 
     def test_owner_id_is_nullable(self, db_engine):
         owner_col = next(
-            c for c in inspect(db_engine).get_columns("links") if c["name"] == "owner_id"
+            c
+            for c in inspect(db_engine).get_columns("links")
+            if c["name"] == "owner_id"
         )
         assert owner_col["nullable"] is True
 

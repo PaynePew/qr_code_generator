@@ -17,6 +17,7 @@ Framework-free by design (the three-layer rule). ``AppError`` lives in
 The unauthenticated case (no session -> 401) is handled upstream by
 ``get_current_user`` and never reaches here.
 """
+
 from __future__ import annotations
 
 from .errors import AppError, ErrorCode

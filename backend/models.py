@@ -1,5 +1,14 @@
 from datetime import datetime
-from sqlalchemy import Boolean, ForeignKey, Integer, String, DateTime, Text, UniqueConstraint
+
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -37,8 +46,12 @@ class Link(Base):
     label: Mapped[str | None] = mapped_column(String(100), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None)
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, default=None
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime, nullable=True, default=None
+    )
 
 
 class Scan(Base):
@@ -65,7 +78,9 @@ class LinkCustomization(Base):
     """
 
     __tablename__ = "link_customizations"
-    __table_args__ = (UniqueConstraint("link_id", name="uq_link_customizations_link_id"),)
+    __table_args__ = (
+        UniqueConstraint("link_id", name="uq_link_customizations_link_id"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     link_id: Mapped[int] = mapped_column(

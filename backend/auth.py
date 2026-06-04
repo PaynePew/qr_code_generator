@@ -7,6 +7,7 @@ no longer exists — so "no session" and "bad session" are one outcome to the
 caller (ADR 0009). This is the only auth seam that touches the web framework;
 verification and persistence stay in their own framework-free modules.
 """
+
 from __future__ import annotations
 
 from fastapi import Depends, Request

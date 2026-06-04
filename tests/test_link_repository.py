@@ -5,9 +5,7 @@ import pytest
 from backend import link_repository
 from backend.link_state import LinkAlreadyDeletedError, LinkNotFoundError
 from backend.models import Link
-
 from tests.conftest import make_user
-
 
 NOW = datetime(2026, 5, 8, 12, 0, 0)
 SECRET = "unit-test-secret"

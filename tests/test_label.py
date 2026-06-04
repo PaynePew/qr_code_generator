@@ -9,6 +9,7 @@ End-to-end coverage:
 - same owner POSTing the same URL × 4 yields 4 distinct tokens (no dedup);
 - Alembic migration is exercised implicitly (conftest runs alembic upgrade head).
 """
+
 from __future__ import annotations
 
 
@@ -67,13 +68,17 @@ class TestPatchLabel:
         assert resp.json()["label"] == "Newsletter"
 
     def test_patch_renames_label(self, auth_client):
-        token = _create(auth_client, "https://example.com/patch-rename", label="Old name")
+        token = _create(
+            auth_client, "https://example.com/patch-rename", label="Old name"
+        )
         resp = auth_client.patch(f"/api/qr/{token}", json={"label": "New name"})
         assert resp.status_code == 200
         assert resp.json()["label"] == "New name"
 
     def test_patch_clears_label_with_null(self, auth_client):
-        token = _create(auth_client, "https://example.com/patch-clear", label="Will be gone")
+        token = _create(
+            auth_client, "https://example.com/patch-clear", label="Will be gone"
+        )
         resp = auth_client.patch(f"/api/qr/{token}", json={"label": None})
         assert resp.status_code == 200
         assert resp.json()["label"] is None

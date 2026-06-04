@@ -41,4 +41,6 @@ def allocate_token(url: str, secret: str, try_insert: Callable[[str], None]) -> 
             return token
         except IntegrityError:
             pass
-    raise TokenCollisionError(f"Failed to allocate unique token after {MAX_RETRIES} retries")
+    raise TokenCollisionError(
+        f"Failed to allocate unique token after {MAX_RETRIES} retries"
+    )

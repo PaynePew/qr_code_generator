@@ -1,10 +1,12 @@
 from datetime import datetime, timedelta
 
-from backend.analytics import aggregate_scans, DEFAULT_RECENT_LIMIT
+from backend.analytics import DEFAULT_RECENT_LIMIT, aggregate_scans
 from backend.models import Scan
 
 
-def _scan(scanned_at: datetime, status_code: int = 302, ip="1.2.3.4", ua="UA/1.0") -> Scan:
+def _scan(
+    scanned_at: datetime, status_code: int = 302, ip="1.2.3.4", ua="UA/1.0"
+) -> Scan:
     return Scan(
         token="ABCDEFG",
         scanned_at=scanned_at,
@@ -84,7 +86,9 @@ class TestRecentScans:
 
     def test_capped_at_default_limit(self):
         base = datetime(2026, 5, 8, 0, 0, 0)
-        scans = [_scan(base + timedelta(seconds=i)) for i in range(DEFAULT_RECENT_LIMIT + 10)]
+        scans = [
+            _scan(base + timedelta(seconds=i)) for i in range(DEFAULT_RECENT_LIMIT + 10)
+        ]
         result = aggregate_scans(scans)
         assert len(result["recent_scans"]) == DEFAULT_RECENT_LIMIT
 

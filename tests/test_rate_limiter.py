@@ -1,6 +1,5 @@
 import logging
 
-
 from backend.rate_limiter.limiter import RateLimiter
 
 
@@ -10,8 +9,9 @@ def _deny_all(limiter, ip, count, path="/api/qr/create"):
     for _ in range(count):
         result = limiter.check(ip)
         if not result.allowed:
-            limiter.log_denied(ip, result.deny_bucket, result.limit,
-                               result.retry_after_seconds, path)
+            limiter.log_denied(
+                ip, result.deny_bucket, result.limit, result.retry_after_seconds, path
+            )
         results.append(result)
     return results
 
@@ -84,8 +84,11 @@ def test_attack_100_denies_produce_10_warn_and_90_debug(caplog):
             result = limiter.check("attacker")
             assert not result.allowed
             limiter.log_denied(
-                "attacker", result.deny_bucket, result.limit,
-                result.retry_after_seconds, "/api/qr/create",
+                "attacker",
+                result.deny_bucket,
+                result.limit,
+                result.retry_after_seconds,
+                "/api/qr/create",
             )
 
     records = [r for r in caplog.records if r.name == "backend.rate_limiter.limiter"]
@@ -108,8 +111,13 @@ def test_anti_spam_cap_is_per_ip_not_global(caplog):
             for _ in range(10):
                 result = limiter.check(ip)
                 assert not result.allowed
-                limiter.log_denied(ip, result.deny_bucket, result.limit,
-                                   result.retry_after_seconds, "/api/qr/create")
+                limiter.log_denied(
+                    ip,
+                    result.deny_bucket,
+                    result.limit,
+                    result.retry_after_seconds,
+                    "/api/qr/create",
+                )
 
     records = [r for r in caplog.records if r.name == "backend.rate_limiter.limiter"]
     warn_count = sum(1 for r in records if r.levelno == logging.WARNING)
@@ -127,8 +135,13 @@ def test_deny_log_format_includes_all_required_fields(caplog):
     with caplog.at_level(logging.WARNING, logger="backend.rate_limiter.limiter"):
         result = limiter.check("log-test-ip")
         assert not result.allowed
-        limiter.log_denied("log-test-ip", result.deny_bucket, result.limit,
-                           result.retry_after_seconds, "/api/qr/create")
+        limiter.log_denied(
+            "log-test-ip",
+            result.deny_bucket,
+            result.limit,
+            result.retry_after_seconds,
+            "/api/qr/create",
+        )
 
     assert caplog.records, "Expected at least one log record"
     msg = caplog.records[0].getMessage()

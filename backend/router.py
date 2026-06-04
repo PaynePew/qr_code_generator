@@ -6,15 +6,12 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Request, UploadFile, File, Form
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
-from . import analytics
-from . import customization_repository
-from . import link_repository
-from . import scan_repository
+from . import analytics, customization_repository, link_repository, scan_repository
 from .auth import get_current_user
 from .authorization import authorize_owner, forbid_if_demo
 from .database import get_db
@@ -30,11 +27,18 @@ from .errors import (
 )
 from .link_state import LinkState, derive_state
 from .models import Link, User
-from .storage import InMemoryGateway, S3Gateway, MAX_IMAGE_BYTES, StorageGateway, sniff_image_content_type, strip_png_exif
-from .token_generator import TokenCollisionError
-from .url_validator import validate_and_normalize, InvalidURLError
 from .qr_generator import generate_qr_png
 from .rate_limiter.ip_extraction import extract_client_ip
+from .storage import (
+    MAX_IMAGE_BYTES,
+    InMemoryGateway,
+    S3Gateway,
+    StorageGateway,
+    sniff_image_content_type,
+    strip_png_exif,
+)
+from .token_generator import TokenCollisionError
+from .url_validator import InvalidURLError, validate_and_normalize
 
 router = APIRouter(prefix="/api")
 redirect_router = APIRouter()
@@ -218,7 +222,9 @@ def qr_image(
     return Response(content=png_bytes, media_type="image/png")
 
 
-def _validate_and_strip_image(data: bytes, field_name: str = "image") -> tuple[bytes, str]:
+def _validate_and_strip_image(
+    data: bytes, field_name: str = "image"
+) -> tuple[bytes, str]:
     """Validate image bytes: size cap, magic-byte sniff, EXIF strip.
 
     Returns ``(stripped_bytes, content_type)``.
@@ -228,7 +234,9 @@ def _validate_and_strip_image(data: bytes, field_name: str = "image") -> tuple[b
         raise file_too_large(MAX_IMAGE_BYTES)
     content_type = sniff_image_content_type(data)
     if content_type is None:
-        raise invalid_image(f"{field_name} is not a recognised image format (PNG, JPEG, GIF, WebP)")
+        raise invalid_image(
+            f"{field_name} is not a recognised image format (PNG, JPEG, GIF, WebP)"
+        )
     stripped = strip_png_exif(data)
     return stripped, content_type
 
@@ -238,7 +246,9 @@ async def put_customization(
     token: str,
     style: str = Form(..., description="JSON-serialised style recipe"),
     image: UploadFile = File(..., description="Rendered composite QR PNG"),
-    logo: UploadFile | None = File(default=None, description="Optional logo (re-upload or omit)"),
+    logo: UploadFile | None = File(
+        default=None, description="Optional logo (re-upload or omit)"
+    ),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     storage: StorageGateway = Depends(_get_storage),
@@ -265,7 +275,9 @@ async def put_customization(
         if not isinstance(style_parsed, dict):
             raise ValueError("style must be a JSON object")
     except (ValueError, json.JSONDecodeError) as exc:
-        raise AppError(ErrorCode.VALIDATION_ERROR, 422, f"Invalid style: {exc}") from exc
+        raise AppError(
+            ErrorCode.VALIDATION_ERROR, 422, f"Invalid style: {exc}"
+        ) from exc
 
     # Validate and strip EXIF from composite image.
     image_bytes = await image.read()
@@ -438,7 +450,9 @@ def patch_link(
     normalized_url: Optional[str] = None
     if "original_url" in fields_to_update:
         if body.original_url is None:
-            raise AppError(ErrorCode.VALIDATION_ERROR, 422, "original_url cannot be null")
+            raise AppError(
+                ErrorCode.VALIDATION_ERROR, 422, "original_url cannot be null"
+            )
         try:
             normalized_url = validate_and_normalize(body.original_url)
         except InvalidURLError as e:
@@ -446,7 +460,9 @@ def patch_link(
 
     normalized_expires: Optional[datetime] = None
     if "expires_at" in fields_to_update:
-        normalized_expires = body.expires_at.replace(tzinfo=None) if body.expires_at else None
+        normalized_expires = (
+            body.expires_at.replace(tzinfo=None) if body.expires_at else None
+        )
 
     normalised_label: Optional[str] = None
     if "label" in fields_to_update:

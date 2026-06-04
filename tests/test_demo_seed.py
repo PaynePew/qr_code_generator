@@ -8,6 +8,7 @@ repeatedly (deploys re-run it) without duplicating data.
 These assert observable persisted state, not the seed's internals: how many
 Links/Scans exist, which states they span, and that a second run is a no-op.
 """
+
 from __future__ import annotations
 
 from datetime import datetime

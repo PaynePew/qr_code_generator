@@ -13,6 +13,7 @@ would resolve) and the auth rule keys by client IP. An unauthenticated create is
 ``get_current_user`` rejects it with 401 anyway, and account-farming is capped at
 the auth endpoint rather than on create.
 """
+
 from __future__ import annotations
 
 import logging
@@ -109,7 +110,12 @@ def _auth_key(request: Request) -> str | None:
 
 
 _RULES: tuple[_Rule, ...] = (
-    _Rule(method="POST", path=_CREATE_PATH, limiter=_get_create_limiter, key_for=_create_key),
+    _Rule(
+        method="POST",
+        path=_CREATE_PATH,
+        limiter=_get_create_limiter,
+        key_for=_create_key,
+    ),
     _Rule(method="POST", path=_AUTH_PATH, limiter=_get_auth_limiter, key_for=_auth_key),
 )
 
@@ -143,7 +149,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         if not result.allowed:
             limiter.log_denied(
-                key, result.deny_bucket, result.limit, result.retry_after_seconds, rule.path
+                key,
+                result.deny_bucket,
+                result.limit,
+                result.retry_after_seconds,
+                rule.path,
             )
             return JSONResponse(
                 content={

@@ -13,6 +13,7 @@ clock (matching the existing limiter integration tests):
 - the auth endpoint cap counts per IP, independent of any session;
 - both still emit IETF RateLimit headers and a 429 with Retry-After.
 """
+
 from __future__ import annotations
 
 import itertools
@@ -23,7 +24,6 @@ from fastapi.testclient import TestClient
 from backend import session as session_module
 from backend.main import app
 from backend.router import get_db
-
 from tests.conftest import make_user
 
 _counter = itertools.count(1)
@@ -38,7 +38,9 @@ def _login_as(client, user):
     test env keeps the cookie storable over the HTTP TestClient.
     """
     config = session_module.SessionConfig()
-    client.cookies.set(session_module.COOKIE_NAME, session_module.issue_session(user.id, config))
+    client.cookies.set(
+        session_module.COOKIE_NAME, session_module.issue_session(user.id, config)
+    )
 
 
 def _create(client, *, ip="1.2.3.4"):
@@ -141,7 +143,9 @@ def test_create_clock_advance_unlocks_one_more_for_same_user(db_session, monkeyp
 
     clock = [0.0]
     monkeypatch.setattr(
-        mw_module, "_create_limiter", RateLimiter(hourly_limit=3, clock=lambda: clock[0])
+        mw_module,
+        "_create_limiter",
+        RateLimiter(hourly_limit=3, clock=lambda: clock[0]),
     )
 
     user = make_user(db_session)

@@ -6,6 +6,7 @@ it, upsert the User by Google subject id, and set our own signed session cookie
 current-user endpoint reflects it back. Google's token is never reused as the
 session.
 """
+
 from __future__ import annotations
 
 import logging
@@ -15,9 +16,8 @@ from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from . import google_identity
+from . import google_identity, user_repository
 from . import session as session_module
-from . import user_repository
 from .auth import get_current_user
 from .errors import AppError, ErrorCode
 from .google_identity import InvalidGoogleTokenError
@@ -34,7 +34,9 @@ auth_router = APIRouter(prefix="/api/auth")
 def _google_client_id() -> str:
     client_id = os.environ.get("GOOGLE_CLIENT_ID")
     if not client_id:
-        raise AppError(ErrorCode.INTERNAL_ERROR, 503, "Google sign-in is not configured")
+        raise AppError(
+            ErrorCode.INTERNAL_ERROR, 503, "Google sign-in is not configured"
+        )
     return client_id
 
 

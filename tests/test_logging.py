@@ -7,6 +7,7 @@ Acceptance criteria:
 - A redirect-path log record contains no raw IP.
 - No secrets/cookies/tokens/PII appear in logs.
 """
+
 from __future__ import annotations
 
 import json
@@ -18,7 +19,6 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-
 # ---------------------------------------------------------------------------
 # Unit: IP hashing / truncation helpers (ADR 0013)
 # ---------------------------------------------------------------------------
@@ -27,23 +27,27 @@ from fastapi.testclient import TestClient
 class TestIPHashing:
     def test_hash_ip_returns_hex_string(self):
         from backend.logging_config import hash_ip
+
         result = hash_ip("192.168.1.1")
         assert isinstance(result, str)
         assert len(result) > 0
 
     def test_hash_ip_is_not_raw_ip(self):
         from backend.logging_config import hash_ip
+
         ip = "10.20.30.40"
         assert hash_ip(ip) != ip
 
     def test_hash_ip_is_deterministic_with_same_salt(self):
         from backend.logging_config import hash_ip
+
         h1 = hash_ip("1.2.3.4")
         h2 = hash_ip("1.2.3.4")
         assert h1 == h2
 
     def test_different_ips_produce_different_hashes(self):
         from backend.logging_config import hash_ip
+
         h1 = hash_ip("1.2.3.4")
         h2 = hash_ip("5.6.7.8")
         assert h1 != h2
@@ -51,9 +55,11 @@ class TestIPHashing:
     def test_hash_ip_uses_env_salt(self, monkeypatch):
         """Changing IP_LOG_SALT produces a different hash."""
         from backend import logging_config
+
         monkeypatch.setenv("IP_LOG_SALT", "salt-a")
         # Reload so new env is picked up
         import importlib
+
         importlib.reload(logging_config)
         h1 = logging_config.hash_ip("1.2.3.4")
 
@@ -70,6 +76,7 @@ class TestIPHashing:
         known constant. Refs qr_code_generator-6bs.
         """
         import importlib
+
         from backend import logging_config
 
         monkeypatch.delenv("SECRET", raising=False)
@@ -88,8 +95,13 @@ class TestIPHashing:
 class TestJSONFormatter:
     def _make_record(self, msg: str = "hello", **extra) -> logging.LogRecord:
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0,
-            msg=msg, args=(), exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg=msg,
+            args=(),
+            exc_info=None,
         )
         for k, v in extra.items():
             setattr(record, k, v)
@@ -97,6 +109,7 @@ class TestJSONFormatter:
 
     def test_formatter_produces_json(self):
         from backend.logging_config import JSONFormatter
+
         fmt = JSONFormatter()
         record = self._make_record("test message")
         output = fmt.format(record)
@@ -105,6 +118,7 @@ class TestJSONFormatter:
 
     def test_json_has_required_fields(self):
         from backend.logging_config import JSONFormatter
+
         fmt = JSONFormatter()
         record = self._make_record("test message")
         data = json.loads(fmt.format(record))
@@ -115,6 +129,7 @@ class TestJSONFormatter:
 
     def test_request_id_included_when_set(self):
         from backend.logging_config import JSONFormatter
+
         fmt = JSONFormatter()
         record = self._make_record("test")
         record.correlation_id = "abc-123"
@@ -123,6 +138,7 @@ class TestJSONFormatter:
 
     def test_user_id_included_when_set(self):
         from backend.logging_config import JSONFormatter
+
         fmt = JSONFormatter()
         record = self._make_record("test")
         record.user_id = 42
@@ -148,14 +164,17 @@ class TestCorrelationIdHeader:
 
     def test_correlation_id_generated_when_not_provided(self, client):
         resp = client.get("/api/does-not-exist")
-        request_id = resp.headers.get("x-request-id") or resp.headers.get("X-Request-ID")
+        request_id = resp.headers.get("x-request-id") or resp.headers.get(
+            "X-Request-ID"
+        )
         assert request_id is not None
         assert len(request_id) > 0
 
     def test_500_envelope_includes_correlation_id(self):
         """Catch-all 500 handler must include correlation_id in details (ADR 0013)."""
-        from backend.main import _handle_unexpected_error
         from asgi_correlation_id import CorrelationIdMiddleware
+
+        from backend.main import _handle_unexpected_error
 
         # Use the same permissive validator as the main app so any non-empty
         # string is accepted as a valid correlation ID from an upstream proxy.
@@ -203,6 +222,7 @@ class TestNoRawIPInLogs:
         root.addHandler(handler)
         try:
             from backend.main import app
+
             with TestClient(app, raise_server_exceptions=False) as c:
                 c.get(f"/r/{token}", follow_redirects=False)
         finally:
@@ -241,12 +261,14 @@ class TestNoRawIPInLogs:
 class TestBindUserIdWiredInAuth:
     def test_get_current_user_binds_user_id_to_log_context(self, db_session):
         """get_current_user must call bind_user_id so user_id appears in logs."""
+        import datetime
+
+        from fastapi import Request
+
         from backend import logging_config
         from backend.auth import get_current_user
         from backend.models import User
         from backend.session import COOKIE_NAME, SessionConfig, issue_session
-        from fastapi import Request
-        import datetime
 
         # Reset context var before test
         logging_config._user_id_var.set(None)
@@ -292,7 +314,8 @@ class TestBindUserIdWiredInAuth:
     def test_bind_user_id_propagates_to_json_formatter(self):
         """bind_user_id must be reflected by JSONFormatter via the contextvar."""
         import json as json_mod
-        from backend.logging_config import JSONFormatter, bind_user_id, _user_id_var
+
+        from backend.logging_config import JSONFormatter, _user_id_var, bind_user_id
 
         # Reset context
         _user_id_var.set(None)
@@ -300,8 +323,13 @@ class TestBindUserIdWiredInAuth:
 
         fmt = JSONFormatter()
         record = logging.LogRecord(
-            name="test", level=logging.INFO, pathname="", lineno=0,
-            msg="bound check", args=(), exc_info=None,
+            name="test",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="bound check",
+            args=(),
+            exc_info=None,
         )
         data = json_mod.loads(fmt.format(record))
         assert data.get("user_id") == 999, (
@@ -324,8 +352,8 @@ class TestHashIpWiredOnAuthEndpoint:
         neither '127.0.0.1' nor the TestClient peer identifier appear as
         raw values (ADR 0013).
         """
-        from backend.main import app
         from backend.logging_config import hash_ip
+        from backend.main import app
 
         # TestClient sets request.client.host = "testclient"; compute expected hash.
         expected_hash = hash_ip("testclient")

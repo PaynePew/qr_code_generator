@@ -9,6 +9,7 @@ A non-owner — a logged-in User who is not the Link's ``owner_id`` — gets
 gets 401 (no session) via ``get_current_user``. ADR 0006 still binds: analytics
 never exposes raw scanner IPs (regressed below).
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -23,7 +24,6 @@ from backend.errors import AppError, ErrorCode
 from backend.main import app
 from backend.models import Link, User
 from backend.router import get_db
-
 from tests.conftest import make_user
 
 NOW = datetime(2026, 6, 3, 12, 0, 0)
@@ -96,7 +96,12 @@ class TestAuthorizeOwnerRule:
         )
 
     def _user(self, uid: int) -> User:
-        u = User(google_sub=f"s{uid}", email="x@example.com", created_at=None, last_login_at=None)
+        u = User(
+            google_sub=f"s{uid}",
+            email="x@example.com",
+            created_at=None,
+            last_login_at=None,
+        )
         u.id = uid
         return u
 
@@ -218,7 +223,8 @@ class TestOwnerOnlyPatch:
         stranger = make_user(db_session, email="stranger@example.com")
         token = _mint(as_user(owner))
         resp = as_user(stranger).patch(
-            f"/api/qr/{token}", json={"original_url": "https://evil.example.com/malware"}
+            f"/api/qr/{token}",
+            json={"original_url": "https://evil.example.com/malware"},
         )
         assert resp.status_code == 404
 
@@ -227,7 +233,8 @@ class TestOwnerOnlyPatch:
         stranger = make_user(db_session, email="stranger@example.com")
         token = _mint(as_user(owner))
         as_user(stranger).patch(
-            f"/api/qr/{token}", json={"original_url": "https://evil.example.com/malware"}
+            f"/api/qr/{token}",
+            json={"original_url": "https://evil.example.com/malware"},
         )
         # The destination the owner sees is still the original.
         assert as_user(owner).get(f"/api/qr/{token}").json()["original_url"] == NOW_URL
@@ -235,7 +242,9 @@ class TestOwnerOnlyPatch:
     def test_unauthenticated_gets_401(self, db_session, client):
         owner = make_user(db_session, email="owner@example.com")
         token = _mint_owned(db_session, owner)
-        resp = client.patch(f"/api/qr/{token}", json={"original_url": "https://example.com/x"})
+        resp = client.patch(
+            f"/api/qr/{token}", json={"original_url": "https://example.com/x"}
+        )
         assert resp.status_code == 401
 
 
@@ -257,7 +266,9 @@ class TestOwnerOnlyDelete:
         token = _mint(as_user(owner))
         as_user(stranger).delete(f"/api/qr/{token}")
         # Owner's Link is untouched; redirect still works.
-        assert as_user(owner).get(f"/r/{token}", follow_redirects=False).status_code == 302
+        assert (
+            as_user(owner).get(f"/r/{token}", follow_redirects=False).status_code == 302
+        )
 
     def test_unauthenticated_gets_401(self, db_session, client):
         owner = make_user(db_session, email="owner@example.com")

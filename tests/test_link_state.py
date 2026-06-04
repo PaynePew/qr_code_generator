@@ -12,7 +12,6 @@ from backend.link_state import (
 )
 from backend.models import Link
 
-
 NOW = datetime(2026, 5, 8, 12, 0, 0)
 
 
@@ -115,11 +114,14 @@ class TestTypedExceptions:
 
 
 class TestSerialization:
-    @pytest.mark.parametrize("state,expected", [
-        (LinkState.ACTIVE,  "active"),
-        (LinkState.EXPIRED, "expired"),
-        (LinkState.DELETED, "deleted"),
-    ])
+    @pytest.mark.parametrize(
+        "state,expected",
+        [
+            (LinkState.ACTIVE, "active"),
+            (LinkState.EXPIRED, "expired"),
+            (LinkState.DELETED, "deleted"),
+        ],
+    )
     def test_str_value(self, state, expected):
         assert str(state) == expected
         assert state == expected

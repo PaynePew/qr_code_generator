@@ -11,6 +11,7 @@ Two implementations:
 Both implement ``StorageGateway``.  Application code should depend only on the
 protocol; the DI wiring lives in ``router.py`` / ``main.py``.
 """
+
 from __future__ import annotations
 
 import struct
@@ -86,7 +87,9 @@ class S3Gateway:
     local development without touching real AWS.
     """
 
-    def __init__(self, bucket: str, region: str, endpoint_url: str | None = None) -> None:
+    def __init__(
+        self, bucket: str, region: str, endpoint_url: str | None = None
+    ) -> None:
         self._bucket = bucket
         self._region = region
         self._endpoint_url = endpoint_url
@@ -182,7 +185,9 @@ def strip_png_exif(data: bytes) -> bytes:
     while pos + 12 <= len(data):
         length = struct.unpack(">I", data[pos : pos + 4])[0]
         chunk_type = data[pos + 4 : pos + 8]
-        total_chunk = data[pos : pos + 12 + length]  # length(4) + type(4) + data(N) + crc(4)
+        total_chunk = data[
+            pos : pos + 12 + length
+        ]  # length(4) + type(4) + data(N) + crc(4)
         pos += 12 + length
         if chunk_type in _EXIF_CHUNK_TYPES:
             continue  # drop chunk

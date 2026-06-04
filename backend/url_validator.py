@@ -1,5 +1,5 @@
 import ipaddress
-from urllib.parse import urlparse, urlencode, parse_qsl, urlunparse
+from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 
 class InvalidURLError(ValueError):

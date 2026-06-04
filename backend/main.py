@@ -12,12 +12,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from . import router as _router_module
 from .auth_router import auth_router
 from .errors import AppError, ErrorCode
 from .logging_config import configure_logging
-from . import router as _router_module
-from .router import router, redirect_router, build_storage_gateway
 from .rate_limiter.middleware import RateLimitMiddleware
+from .router import build_storage_gateway, redirect_router, router
 from .storage import InMemoryGateway
 
 _logger = logging.getLogger(__name__)
@@ -79,7 +79,9 @@ def _maybe_warn_multi_worker() -> None:
         )
 
 
-def _validate_window_pair(hourly_var: str, hourly_default: str, daily_var: str, daily_default: str):
+def _validate_window_pair(
+    hourly_var: str, hourly_default: str, daily_var: str, daily_default: str
+):
     """Validate one hourly/daily limiter pair: positive ints with daily >= hourly."""
     hourly = _parse_positive_int(os.environ.get(hourly_var, hourly_default), hourly_var)
     daily = _parse_positive_int(os.environ.get(daily_var, daily_default), daily_var)
@@ -128,7 +130,9 @@ async def lifespan(app: FastAPI):
     yield
 
 
-def _error_body(code: ErrorCode | str, message: str, details: dict | None = None) -> dict:
+def _error_body(
+    code: ErrorCode | str, message: str, details: dict | None = None
+) -> dict:
     """Build the unified error envelope body (ADR 0012)."""
     return {"error": {"code": str(code), "message": message, "details": details or {}}}
 
@@ -190,7 +194,9 @@ async def _handle_app_error(_: Request, exc: AppError) -> JSONResponse:
 
 
 @app.exception_handler(RequestValidationError)
-async def _handle_validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+async def _handle_validation_error(
+    _: Request, exc: RequestValidationError
+) -> JSONResponse:
     """Handler 2 of 4 — Pydantic 422 -> VALIDATION_ERROR envelope (ADR 0012).
 
     The raw ``errors()`` list is preserved in ``details.fields`` so the frontend
@@ -205,7 +211,9 @@ async def _handle_validation_error(_: Request, exc: RequestValidationError) -> J
 
 
 @app.exception_handler(StarletteHTTPException)
-async def _handle_http_exception(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+async def _handle_http_exception(
+    _: Request, exc: StarletteHTTPException
+) -> JSONResponse:
     """Handler 3 of 4 — framework HTTPExceptions (404, 405, …) to envelope (ADR 0012).
 
     Preserves any extra response headers the framework attached (e.g. Allow: for
@@ -234,7 +242,9 @@ async def _handle_unexpected_error(_: Request, exc: Exception) -> JSONResponse:
     details: dict | None = {"correlation_id": cid} if cid else None
     return JSONResponse(
         status_code=500,
-        content=_error_body(ErrorCode.INTERNAL_ERROR, "An unexpected error occurred", details),
+        content=_error_body(
+            ErrorCode.INTERNAL_ERROR, "An unexpected error occurred", details
+        ),
     )
 
 

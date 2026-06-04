@@ -10,19 +10,24 @@ Behavioral contract (asserted here, not internals):
 - ordering: newest-first by created_at;
 - soft-deleted excluded by default; reachable via include_deleted=True.
 """
+
 from datetime import datetime, timedelta
 
 from backend import link_repository
 from backend.models import Link
-
 from tests.conftest import make_user
-
 
 NOW = datetime(2026, 6, 3, 12, 0, 0)
 SECRET = "listing-test-secret"
 
 
-def _create(db_session, owner_id: int, *, created_at: datetime, url: str = "https://example.com/x"):
+def _create(
+    db_session,
+    owner_id: int,
+    *,
+    created_at: datetime,
+    url: str = "https://example.com/x",
+):
     return link_repository.create_link(
         db_session,
         normalized_url=url,

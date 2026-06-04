@@ -12,6 +12,7 @@ or HTTP decision (those live in ``authorization``/the router). It is runnable as
 a deploy step: ``python -m backend.demo_seed`` (reads ``DATABASE_URL`` +
 ``SECRET`` from the environment, like the app).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -106,9 +107,7 @@ def seed_demo(db: Session, *, secret: str, now: datetime) -> User:
 
     # Idempotency guard: the seeded data is the demo. If it is already populated,
     # do not add more (a re-run must not pile up Links/Scans).
-    already_seeded = (
-        db.query(Link).filter(Link.owner_id == user.id).first() is not None
-    )
+    already_seeded = db.query(Link).filter(Link.owner_id == user.id).first() is not None
     if already_seeded:
         return user
 
@@ -141,7 +140,9 @@ def _seed_scans(
     for day_offset, count in plan.items():
         day = now - timedelta(days=day_offset)
         for i in range(count):
-            scanned_at = day.replace(hour=9, minute=0, second=0) + timedelta(minutes=37 * i)
+            scanned_at = day.replace(hour=9, minute=0, second=0) + timedelta(
+                minutes=37 * i
+            )
             status_code = 410 if i % 7 == 6 else 302
             db.add(
                 Scan(

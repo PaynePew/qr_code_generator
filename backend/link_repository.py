@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from .link_state import LinkNotFoundError, ensure_patchable
 from .models import Link
-from .token_generator import allocate_token, TokenCollisionError
+from .token_generator import TokenCollisionError, allocate_token
 
 
 def get_link(db: Session, token: str) -> Link:

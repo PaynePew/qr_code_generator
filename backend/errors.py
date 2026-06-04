@@ -15,6 +15,7 @@ Four exception handlers in ``main.py`` normalize every error surface:
   3. StarletteHTTPException — framework 404/405 etc., status -> code
   4. catch-all Exception — -> INTERNAL_ERROR, logged, never leaks internals
 """
+
 from __future__ import annotations
 
 from enum import StrEnum

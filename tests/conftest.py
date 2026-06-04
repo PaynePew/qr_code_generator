@@ -7,6 +7,7 @@ Each test gets per-test transaction-rollback isolation via a savepoint.
 
 Pure-logic tests (no db_session / client fixture) touch no DB and stay instant.
 """
+
 import os
 import subprocess
 import sys
@@ -25,7 +26,6 @@ from backend.auth import get_current_user  # noqa: E402
 from backend.main import app  # noqa: E402
 from backend.models import User  # noqa: E402
 from backend.router import get_db  # noqa: E402
-
 
 # ---------------------------------------------------------------------------
 # Session-scoped Postgres testcontainer
@@ -71,6 +71,7 @@ def db_engine(pg_container):
 # Per-test transaction-rollback isolation
 # ---------------------------------------------------------------------------
 
+
 @pytest.fixture
 def db_session(db_engine):
     """
@@ -97,6 +98,7 @@ def db_session(db_engine):
 @pytest.fixture
 def client(db_session):
     """FastAPI TestClient wired to the per-test transactional db_session."""
+
     def override_get_db():
         yield db_session
 
@@ -151,6 +153,7 @@ def auth_client(db_session, owner):
     without exercising the full Google flow (covered in test_auth_router.py).
     Request the ``owner`` fixture alongside this one to assert on the authed User.
     """
+
     def override_get_db():
         yield db_session
 

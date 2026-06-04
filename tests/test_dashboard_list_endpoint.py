@@ -12,6 +12,7 @@ Integration coverage:
 - ordering newest-first; deleted excluded by default; trash filter exposes them;
 - the response envelope shape.
 """
+
 from datetime import datetime
 
 from tests.conftest import make_user
@@ -47,7 +48,14 @@ class TestEnvelopeShape:
     def test_item_shape_carries_state_and_scan_count(self, auth_client):
         _create(auth_client, "https://example.com/shape")
         item = auth_client.get("/api/qr").json()["items"][0]
-        for field in ("token", "original_url", "short_url", "status", "scan_count", "created_at"):
+        for field in (
+            "token",
+            "original_url",
+            "short_url",
+            "status",
+            "scan_count",
+            "created_at",
+        ):
             assert field in item
 
 
@@ -96,7 +104,9 @@ class TestStatusAndOrdering:
         assert item["status"] == "active"
 
     def test_status_expired_for_past_expiry(self, auth_client):
-        _create(auth_client, "https://example.com/old", expires_at="2000-01-01T00:00:00")
+        _create(
+            auth_client, "https://example.com/old", expires_at="2000-01-01T00:00:00"
+        )
         item = auth_client.get("/api/qr").json()["items"][0]
         assert item["status"] == "expired"
 

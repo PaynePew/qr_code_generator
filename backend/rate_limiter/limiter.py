@@ -146,7 +146,9 @@ class RateLimiter:
             deny_bucket=triggering.label,
         )
 
-    def log_denied(self, ip: str, bucket: str, limit: int, retry_after: int, path: str) -> None:
+    def log_denied(
+        self, ip: str, bucket: str, limit: int, retry_after: int, path: str
+    ) -> None:
         """Emit a structured deny log, capped at _LOG_CAP_PER_SECOND WARN per IP per second."""
         now = self._clock()
         current_second = int(now)

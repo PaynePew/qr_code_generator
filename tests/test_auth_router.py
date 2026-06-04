@@ -11,6 +11,7 @@ The TestClient speaks HTTP, so SESSION_COOKIE_SECURE is forced false here; the
 Secure attribute itself is asserted in the cookie-attributes test via the raw
 Set-Cookie header.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -50,7 +51,9 @@ def _mock_verify(monkeypatch, identity=IDENTITY, raises=None):
 
 
 class TestStartSession:
-    def test_valid_credential_creates_user_and_sets_cookie(self, client, db_session, monkeypatch):
+    def test_valid_credential_creates_user_and_sets_cookie(
+        self, client, db_session, monkeypatch
+    ):
         _mock_verify(monkeypatch)
         resp = client.post("/api/auth/session", json={"credential": "good-token"})
         assert resp.status_code == 200
@@ -58,7 +61,9 @@ class TestStartSession:
         assert body["email"] == "alice@example.com"
         assert body["is_demo"] is False
         # A User row was persisted.
-        assert db_session.query(User).filter(User.google_sub == "sub-int-1").count() == 1
+        assert (
+            db_session.query(User).filter(User.google_sub == "sub-int-1").count() == 1
+        )
         # The session cookie was set.
         assert session_module.COOKIE_NAME in resp.cookies
 
@@ -76,12 +81,16 @@ class TestStartSession:
         _mock_verify(monkeypatch)
         client.post("/api/auth/session", json={"credential": "good-token"})
 
-        renamed = GoogleIdentity(google_sub="sub-int-1", email="alice@new.example.com", name="Alice2")
+        renamed = GoogleIdentity(
+            google_sub="sub-int-1", email="alice@new.example.com", name="Alice2"
+        )
         _mock_verify(monkeypatch, identity=renamed)
         resp = client.post("/api/auth/session", json={"credential": "good-token-2"})
         assert resp.status_code == 200
         assert resp.json()["email"] == "alice@new.example.com"
-        assert db_session.query(User).filter(User.google_sub == "sub-int-1").count() == 1
+        assert (
+            db_session.query(User).filter(User.google_sub == "sub-int-1").count() == 1
+        )
 
     def test_invalid_credential_is_rejected_401(self, client, monkeypatch):
         _mock_verify(monkeypatch, raises=InvalidGoogleTokenError("nope"))

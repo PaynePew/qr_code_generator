@@ -9,6 +9,7 @@ AC coverage:
   - Missing both (no XFF, no client) returns None
   - Whitespace around XFF values is stripped
 """
+
 from unittest.mock import MagicMock
 
 from backend.rate_limiter.ip_extraction import extract_client_ip
@@ -18,7 +19,9 @@ def _req(xff=None, client_host="10.0.0.1"):
     """Build a minimal request-like mock."""
     req = MagicMock()
     if xff is not None:
-        req.headers.get.side_effect = lambda key, default=None: xff if key == "x-forwarded-for" else default
+        req.headers.get.side_effect = lambda key, default=None: (
+            xff if key == "x-forwarded-for" else default
+        )
     else:
         req.headers.get.return_value = None
     if client_host is not None:

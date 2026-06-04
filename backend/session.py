@@ -7,6 +7,7 @@ expired cookie fails to load and is treated as no session at all. Cookie
 attributes (httpOnly + SameSite=Lax always; Secure under ``SESSION_COOKIE_SECURE``
 in prod) are applied where the cookie is set, in the auth router.
 """
+
 from __future__ import annotations
 
 import os

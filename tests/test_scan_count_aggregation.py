@@ -10,10 +10,10 @@ Behavioral contract:
 - an empty token list yields an empty map without touching the database;
 - counts are scoped to the requested tokens only (no cross-token bleed).
 """
+
 from datetime import datetime, timedelta
 
 from backend import scan_repository
-
 
 NOW = datetime(2026, 6, 3, 12, 0, 0)
 
@@ -36,7 +36,9 @@ class TestScanCountsForTokens:
         _scan(db_session, "TOKAAA", offset_seconds=2)
         _scan(db_session, "TOKBBB", offset_seconds=0)
 
-        counts = scan_repository.scan_counts_for_tokens(db_session, ["TOKAAA", "TOKBBB"])
+        counts = scan_repository.scan_counts_for_tokens(
+            db_session, ["TOKAAA", "TOKBBB"]
+        )
 
         assert counts["TOKAAA"] == 3
         assert counts["TOKBBB"] == 1

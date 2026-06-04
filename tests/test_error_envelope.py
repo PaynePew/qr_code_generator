@@ -17,6 +17,7 @@ Specific-error rulings from ADR 0012 are also exercised here:
 - Demo account write -> 403 DEMO_READ_ONLY
 - Auth 401 -> UNAUTHENTICATED
 """
+
 from __future__ import annotations
 
 import pytest
@@ -24,7 +25,6 @@ from fastapi.testclient import TestClient
 
 from backend.errors import AppError, ErrorCode
 from backend.main import app
-
 
 # ---------------------------------------------------------------------------
 # Unit: AppError itself
@@ -56,21 +56,24 @@ class TestAppError:
 
 
 class TestErrorCodeTaxonomy:
-    @pytest.mark.parametrize("name", [
-        "UNAUTHENTICATED",
-        "DEMO_READ_ONLY",
-        "FORBIDDEN",
-        "NOT_FOUND",
-        "LINK_GONE",
-        "LINK_DELETED",
-        "VALIDATION_ERROR",
-        "INVALID_URL",
-        "INVALID_IMAGE",
-        "FILE_TOO_LARGE",
-        "RATE_LIMITED",
-        "TOKEN_ALLOCATION_FAILED",
-        "INTERNAL_ERROR",
-    ])
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "UNAUTHENTICATED",
+            "DEMO_READ_ONLY",
+            "FORBIDDEN",
+            "NOT_FOUND",
+            "LINK_GONE",
+            "LINK_DELETED",
+            "VALIDATION_ERROR",
+            "INVALID_URL",
+            "INVALID_IMAGE",
+            "FILE_TOO_LARGE",
+            "RATE_LIMITED",
+            "TOKEN_ALLOCATION_FAILED",
+            "INTERNAL_ERROR",
+        ],
+    )
     def test_code_exists(self, name):
         assert hasattr(ErrorCode, name), f"ErrorCode.{name} missing"
 
@@ -131,6 +134,7 @@ class TestEnvelopeShape:
         """Catch-all handler must not leak stack / exception detail to the client."""
         from fastapi import FastAPI
         from fastapi.testclient import TestClient
+
         from backend.main import _handle_unexpected_error
 
         # Build a minimal app wired with the real catch-all handler.
@@ -157,13 +161,11 @@ class TestEnvelopeShape:
 
 
 class TestADR0012Rulings:
-    def test_non_owner_access_returns_404_not_403(
-        self, db_session, auth_client
-    ):
+    def test_non_owner_access_returns_404_not_403(self, db_session, auth_client):
         """Non-owner on owner-only resource -> 404 NOT_FOUND (owner-404 rule)."""
-        from tests.conftest import make_user
         from backend.auth import get_current_user
         from backend.database import get_db
+        from tests.conftest import make_user
 
         # Create a link owned by user A (auth_client's owner).
         create_resp = auth_client.post(
@@ -215,9 +217,9 @@ class TestADR0012Rulings:
 
     def test_demo_write_returns_403_demo_read_only(self, db_session):
         """Demo account mutation -> 403 DEMO_READ_ONLY."""
-        from tests.conftest import make_user
         from backend.auth import get_current_user
         from backend.database import get_db
+        from tests.conftest import make_user
 
         demo = make_user(db_session, is_demo=True)
 

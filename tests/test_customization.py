@@ -10,6 +10,7 @@ Coverage:
 - GET /api/qr/{token}/customization — happy path, auth, 404 when absent
 - GET /api/qr/{token}/image — serves stored composite when present, else vanilla
 """
+
 from __future__ import annotations
 
 import json
@@ -39,8 +40,10 @@ _JPEG_MAGIC = b"\xff\xd8\xff\xe0"
 
 def _minimal_png() -> bytes:
     """Return a syntactically valid 1×1 white PNG (no palette chunks)."""
-    import qrcode
     import io as _io
+
+    import qrcode
+
     img = qrcode.make("http://example.com")
     buf = _io.BytesIO()
     img.save(buf, format="PNG")
@@ -118,7 +121,10 @@ class TestInMemoryGateway:
 
     def test_url_for_uses_base_url(self):
         gw = InMemoryGateway(base_url="http://fake-storage")
-        assert gw.url_for("qr/tok/composite_abc.png") == "http://fake-storage/qr/tok/composite_abc.png"
+        assert (
+            gw.url_for("qr/tok/composite_abc.png")
+            == "http://fake-storage/qr/tok/composite_abc.png"
+        )
 
     def test_put_overwrites_existing(self):
         gw = InMemoryGateway()
@@ -194,11 +200,16 @@ class TestLinkCustomizationMigration:
     def test_table_exists(self, db_session: Session):
         """link_customizations table must exist after alembic upgrade head."""
         from sqlalchemy import text
+
         result = db_session.execute(
-            text("SELECT table_name FROM information_schema.tables WHERE table_name = 'link_customizations'")
+            text(
+                "SELECT table_name FROM information_schema.tables WHERE table_name = 'link_customizations'"
+            )
         )
         rows = result.fetchall()
-        assert len(rows) == 1, "link_customizations table not found — migration may not have run"
+        assert len(rows) == 1, (
+            "link_customizations table not found — migration may not have run"
+        )
 
     def test_unique_constraint_on_link_id(self, db_session: Session):
         """Inserting two customizations for the same link_id must fail."""
@@ -244,7 +255,11 @@ def _put_customization(
 ):
     """Helper: POST a customization via multipart/form-data."""
     if style is None:
-        style = {"foreground": "#000000", "background": "#ffffff", "dot_style": "square"}
+        style = {
+            "foreground": "#000000",
+            "background": "#ffffff",
+            "dot_style": "square",
+        }
     if image_bytes is None:
         image_bytes = _minimal_png()
 
@@ -259,12 +274,16 @@ def _put_customization(
 
 
 class TestPutCustomization:
-    def test_happy_path_returns_200(self, auth_client: TestClient, db_session: Session, owner):
+    def test_happy_path_returns_200(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
         _insert_owned_link(db_session, "put0001", owner.id)
         resp = _put_customization(auth_client, "put0001")
         assert resp.status_code == 200
 
-    def test_response_contains_token_and_image_key(self, auth_client: TestClient, db_session: Session, owner):
+    def test_response_contains_token_and_image_key(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
         _insert_owned_link(db_session, "put0002", owner.id)
         resp = _put_customization(auth_client, "put0002")
         body = resp.json()
@@ -272,16 +291,20 @@ class TestPutCustomization:
         assert "image_key" in body
         assert body["image_key"].startswith("qr/put0002/composite_")
 
-    def test_image_key_includes_versioned_uuid(self, auth_client: TestClient, db_session: Session, owner):
+    def test_image_key_includes_versioned_uuid(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
         _insert_owned_link(db_session, "put0003", owner.id)
         resp1 = _put_customization(auth_client, "put0003")
         resp2 = _put_customization(auth_client, "put0003")
         # Two calls must produce different image_keys (re-style writes new versioned key)
         assert resp1.json()["image_key"] != resp2.json()["image_key"]
 
-    def test_composite_persisted_in_storage(self, auth_client: TestClient, db_session: Session, owner):
-        from backend.router import _get_storage
+    def test_composite_persisted_in_storage(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
         from backend.main import app
+        from backend.router import _get_storage
 
         gw = InMemoryGateway()
         app.dependency_overrides[_get_storage] = lambda: gw
@@ -295,27 +318,37 @@ class TestPutCustomization:
             # Remove only the storage override; leave other overrides intact
             app.dependency_overrides.pop(_get_storage, None)
 
-    def test_non_image_upload_rejected_422(self, auth_client: TestClient, db_session: Session, owner):
+    def test_non_image_upload_rejected_422(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
         _insert_owned_link(db_session, "put0005", owner.id)
-        resp = _put_customization(auth_client, "put0005", image_bytes=b"not an image at all")
+        resp = _put_customization(
+            auth_client, "put0005", image_bytes=b"not an image at all"
+        )
         assert resp.status_code == 422
         assert resp.json()["error"]["code"] == "INVALID_IMAGE"
 
-    def test_oversized_upload_rejected_413(self, auth_client: TestClient, db_session: Session, owner):
+    def test_oversized_upload_rejected_413(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
         _insert_owned_link(db_session, "put0006", owner.id)
         big = _PNG_MAGIC + b"\x00" * (MAX_IMAGE_BYTES + 1)
         resp = _put_customization(auth_client, "put0006", image_bytes=big)
         assert resp.status_code == 413
         assert resp.json()["error"]["code"] == "FILE_TOO_LARGE"
 
-    def test_invalid_style_json_rejected_422(self, auth_client: TestClient, db_session: Session, owner):
+    def test_invalid_style_json_rejected_422(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
         _insert_owned_link(db_session, "put0007", owner.id)
         files = [("image", ("c.png", _minimal_png(), "image/png"))]
         data = {"style": "not-json{{"}
         resp = auth_client.put("/api/qr/put0007/customization", data=data, files=files)
         assert resp.status_code == 422
 
-    def test_style_must_be_json_object(self, auth_client: TestClient, db_session: Session, owner):
+    def test_style_must_be_json_object(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
         _insert_owned_link(db_session, "put0008", owner.id)
         files = [("image", ("c.png", _minimal_png(), "image/png"))]
         data = {"style": json.dumps([1, 2, 3])}  # array, not object
@@ -348,9 +381,11 @@ class TestPutCustomization:
 
         assert resp.status_code == 404
 
-    def test_logo_key_stored_when_logo_provided(self, auth_client: TestClient, db_session: Session, owner):
-        from backend.router import _get_storage
+    def test_logo_key_stored_when_logo_provided(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
         from backend.main import app
+        from backend.router import _get_storage
 
         gw = InMemoryGateway()
         app.dependency_overrides[_get_storage] = lambda: gw
@@ -364,7 +399,9 @@ class TestPutCustomization:
         finally:
             app.dependency_overrides.pop(_get_storage, None)
 
-    def test_logo_key_none_when_no_logo(self, auth_client: TestClient, db_session: Session, owner):
+    def test_logo_key_none_when_no_logo(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
         _insert_owned_link(db_session, "put0012", owner.id)
         resp = _put_customization(auth_client, "put0012")
         assert resp.json()["logo_key"] is None
@@ -373,8 +410,8 @@ class TestPutCustomization:
         self, auth_client: TestClient, db_session: Session, owner
     ):
         """Second PUT must write a new key; the first object must still exist (ADR 0011)."""
-        from backend.router import _get_storage
         from backend.main import app
+        from backend.router import _get_storage
 
         gw = InMemoryGateway()
         app.dependency_overrides[_get_storage] = lambda: gw
@@ -405,13 +442,17 @@ class TestGetCustomization:
         assert resp.status_code == 200, resp.text
         return resp.json()
 
-    def test_happy_path_returns_200(self, auth_client: TestClient, db_session: Session, owner):
+    def test_happy_path_returns_200(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
         _insert_owned_link(db_session, "get0001", owner.id)
         self._store_customization(auth_client, "get0001")
         resp = auth_client.get("/api/qr/get0001/customization")
         assert resp.status_code == 200
 
-    def test_response_contains_style_and_urls(self, auth_client: TestClient, db_session: Session, owner):
+    def test_response_contains_style_and_urls(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
         _insert_owned_link(db_session, "get0002", owner.id)
         self._store_customization(auth_client, "get0002")
         resp = auth_client.get("/api/qr/get0002/customization")
@@ -421,7 +462,9 @@ class TestGetCustomization:
         assert "updated_at" in body
         assert body["token"] == "get0002"
 
-    def test_returns_404_when_no_customization(self, auth_client: TestClient, db_session: Session, owner):
+    def test_returns_404_when_no_customization(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
         _insert_owned_link(db_session, "get0003", owner.id)
         resp = auth_client.get("/api/qr/get0003/customization")
         assert resp.status_code == 404
@@ -459,9 +502,11 @@ class TestGetCustomization:
 
         assert resp.status_code == 404
 
-    def test_logo_url_present_when_logo_stored(self, auth_client: TestClient, db_session: Session, owner):
-        from backend.router import _get_storage
+    def test_logo_url_present_when_logo_stored(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
         from backend.main import app
+        from backend.router import _get_storage
 
         gw = InMemoryGateway()
         app.dependency_overrides[_get_storage] = lambda: gw
@@ -474,7 +519,9 @@ class TestGetCustomization:
         finally:
             app.dependency_overrides.pop(_get_storage, None)
 
-    def test_logo_url_none_when_no_logo(self, auth_client: TestClient, db_session: Session, owner):
+    def test_logo_url_none_when_no_logo(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
         _insert_owned_link(db_session, "get0007", owner.id)
         _put_customization(auth_client, "get0007")
         resp = auth_client.get("/api/qr/get0007/customization")
@@ -487,7 +534,9 @@ class TestGetCustomization:
 
 
 class TestQrImageWithCustomization:
-    def test_uncustomized_link_still_returns_vanilla_png(self, client: TestClient, db_session: Session):
+    def test_uncustomized_link_still_returns_vanilla_png(
+        self, client: TestClient, db_session: Session
+    ):
         _insert_link(db_session, "img0001")
         resp = client.get("/api/qr/img0001/image")
         assert resp.status_code == 200
@@ -497,8 +546,8 @@ class TestQrImageWithCustomization:
         self, auth_client: TestClient, db_session: Session, owner
     ):
         """After PUT, GET /image must return the stored composite, not vanilla."""
-        from backend.router import _get_storage
         from backend.main import app
+        from backend.router import _get_storage
 
         fake_composite = _minimal_png()
         gw = InMemoryGateway()
@@ -506,7 +555,9 @@ class TestQrImageWithCustomization:
 
         try:
             _insert_owned_link(db_session, "img0002", owner.id)
-            put_resp = _put_customization(auth_client, "img0002", image_bytes=fake_composite)
+            put_resp = _put_customization(
+                auth_client, "img0002", image_bytes=fake_composite
+            )
             assert put_resp.status_code == 200
 
             img_resp = auth_client.get("/api/qr/img0002/image")

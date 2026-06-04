@@ -9,6 +9,7 @@ failure types (``ValueError`` for crypto/audience/expiry, ``GoogleAuthError``
 for issuer) into one domain error so callers never branch on Google's
 internals. This module is pure domain — it must not import a web framework.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

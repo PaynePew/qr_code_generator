@@ -16,6 +16,7 @@ Key decisions:
     "one source hammering" is detectable without retaining the raw address.
 - Log rotation with ~30-day retention is configured by ``configure_logging``.
 """
+
 from __future__ import annotations
 
 import contextvars
@@ -55,6 +56,7 @@ def get_log_user_id() -> int | None:
 # ---------------------------------------------------------------------------
 # IP hashing (ADR 0013 — abuse-relevant paths only)
 # ---------------------------------------------------------------------------
+
 
 def _get_ip_salt() -> bytes:
     """Return the per-deployment salt for IP hashing.
@@ -111,7 +113,9 @@ class JSONFormatter(logging.Formatter):
                 record.exc_text = self.formatException(record.exc_info)
 
         obj: dict = {
-            "timestamp": datetime.fromtimestamp(record.created, tz=timezone.utc).isoformat(),
+            "timestamp": datetime.fromtimestamp(
+                record.created, tz=timezone.utc
+            ).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.message,
@@ -152,8 +156,10 @@ def configure_logging(level: int = logging.INFO) -> None:
     handler check).
     """
     root = logging.getLogger()
-    if any(isinstance(h, logging.StreamHandler) and getattr(h, "_json_configured", False)
-           for h in root.handlers):
+    if any(
+        isinstance(h, logging.StreamHandler) and getattr(h, "_json_configured", False)
+        for h in root.handlers
+    ):
         return  # Already configured.
 
     root.setLevel(level)

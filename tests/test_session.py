@@ -5,6 +5,7 @@ to its user id, while a tampered, foreign-secret, or expired cookie reads back a
 "no session" (None) rather than raising — so a bad cookie is indistinguishable
 from no cookie at the dependency boundary.
 """
+
 from __future__ import annotations
 
 import pytest
