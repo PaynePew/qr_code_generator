@@ -111,13 +111,20 @@ jobs:
           scp ./docker-compose.prod.yml ./backup.sh ./deploy/restore-drill.sh \
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/"
 
-      # Pull the image by the exact commit SHA, then bring the stack up. The box
-      # is already `docker login`'d to GHCR with the owner's read:packages PAT.
-      - name: Pull + up (by commit SHA)
+      # Persist the deployed SHA so EVERY recreate is deterministic — not only this
+      # CD run. `/opt/qrcode/.env` is docker compose's variable-interpolation file
+      # (distinct from `.env.prod`, the container env_file); compose auto-reads it,
+      # so `${IMAGE_TAG:-latest}` resolves to the pinned SHA on any later bare
+      # `up -d` (manual, reboot, or an emergency rollback) instead of drifting to
+      # `:latest`. Mirrors the platform scheduler `:latest`-stale postmortem, where
+      # a rollback `up -d` onto a 13-day-old `:latest` hit an Alembic revision
+      # mismatch → ~15 min outage. The box is already `docker login`'d to GHCR with
+      # the owner's read:packages PAT.
+      - name: Pin SHA into /opt/qrcode/.env, then pull + up
         run: |
           ssh "$DEPLOY_USER@$DEPLOY_HOST" \
             "cd '$DEPLOY_DIR' && \
-             export IMAGE_TAG='${{ github.sha }}' && \
+             printf 'IMAGE_TAG=%s\n' '${{ github.sha }}' > .env && \
              docker compose -f docker-compose.prod.yml pull && \
              docker compose -f docker-compose.prod.yml up -d"
 

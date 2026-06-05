@@ -10,6 +10,11 @@ services:
   qrcode-app:
     build: .
     image: ghcr.io/paynepew/qr_code_generator:${IMAGE_TAG:-latest}   # CD builds+pushes; prod pulls by tag
+    # Pin the container name so it's deterministic (default would be
+    # `qrcode-qrcode-app-1`). The CD smoke step + `docker logs qrcode-app` address
+    # it by this exact name; the edge Caddy reaches it via the network alias
+    # (= service name) regardless. Single-instance tenant, so no scaling tradeoff.
+    container_name: qrcode-app
     restart: unless-stopped
     env_file: .env.prod
     depends_on:
