@@ -180,7 +180,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origin_regex=r"https?://localhost:\d+",
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "X-Request-ID"],
 )
 
