@@ -27,3 +27,19 @@ def iso_utc(dt: Optional[datetime]) -> Optional[str]:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.isoformat()
+
+
+def to_naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    """Normalize an inbound datetime to naive UTC (the storage convention).
+
+    The inbound mirror of ``iso_utc``: a tz-aware value is converted to UTC
+    before its tzinfo is stripped — NOT dropped, since dropping an offset would
+    store the wrong instant (bead r5n). A naive value is assumed already-UTC and
+    passes through; ``None`` passes through.
+    """
+    if dt is None:
+        return None
+    # Guard the astimezone: on a naive value it would assume system-local time.
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc)
+    return dt.replace(tzinfo=None)

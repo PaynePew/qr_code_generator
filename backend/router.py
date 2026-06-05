@@ -37,7 +37,7 @@ from .storage import (
     sniff_image_content_type,
     strip_png_exif,
 )
-from .timeutil import iso_utc, now_utc
+from .timeutil import iso_utc, now_utc, to_naive_utc
 from .token_generator import TokenCollisionError
 from .url_validator import InvalidURLError, validate_and_normalize
 
@@ -167,7 +167,7 @@ def create_qr(
 
     cfg = _config()
     now = now_utc()
-    expires_at = body.expires_at.replace(tzinfo=None) if body.expires_at else None
+    expires_at = to_naive_utc(body.expires_at)
 
     try:
         link = link_repository.create_link(
@@ -457,9 +457,7 @@ def patch_link(
 
     normalized_expires: Optional[datetime] = None
     if "expires_at" in fields_to_update:
-        normalized_expires = (
-            body.expires_at.replace(tzinfo=None) if body.expires_at else None
-        )
+        normalized_expires = to_naive_utc(body.expires_at)
 
     normalised_label: Optional[str] = None
     if "label" in fields_to_update:

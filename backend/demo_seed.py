@@ -16,12 +16,13 @@ a deploy step: ``python -m backend.demo_seed`` (reads ``DATABASE_URL`` +
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
 from . import link_repository
 from .models import Link, Scan, User
+from .timeutil import now_utc
 
 # Fixed identity for the one shared demo account. `google_sub` is Google's
 # subject id for real users; this sentinel can never collide with one (Google
@@ -166,8 +167,7 @@ def _main() -> None:
     if not secret:
         raise RuntimeError("SECRET environment variable must be set")
 
-    # Naive UTC, matching how the app stores timestamps (see timeutil.now_utc).
-    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    now = now_utc()
     db = SessionLocal()
     try:
         user = seed_demo(db, secret=secret, now=now)

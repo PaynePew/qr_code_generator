@@ -8,7 +8,7 @@ by the viewer's offset.
 
 from datetime import datetime, timedelta, timezone
 
-from backend.timeutil import iso_utc, now_utc
+from backend.timeutil import iso_utc, now_utc, to_naive_utc
 
 
 class TestNowUtc:
@@ -34,3 +34,34 @@ class TestIsoUtc:
         # Idempotent: an already-aware UTC datetime keeps a single +00:00.
         assert result.count("+00:00") == 1
         assert datetime.fromisoformat(result) == aware
+
+
+class TestToNaiveUtc:
+    """Inbound mirror of iso_utc: normalize any datetime to naive UTC (bead r5n)."""
+
+    def test_aware_non_utc_converted_then_stripped(self):
+        # +08:00 midnight is 16:00 the previous day in UTC — convert, don't drop.
+        dt = datetime(2099, 1, 1, 0, 0, 0, tzinfo=timezone(timedelta(hours=8)))
+        result = to_naive_utc(dt)
+        assert result == datetime(2098, 12, 31, 16, 0, 0)
+        assert result.tzinfo is None
+
+    def test_aware_negative_offset_rolls_forward(self):
+        # -05:00 rolls the instant forward: 00:00-05:00 is 05:00 the same day UTC.
+        dt = datetime(2099, 1, 1, 0, 0, 0, tzinfo=timezone(timedelta(hours=-5)))
+        result = to_naive_utc(dt)
+        assert result == datetime(2099, 1, 1, 5, 0, 0)
+        assert result.tzinfo is None
+
+    def test_aware_utc_stripped_in_place(self):
+        dt = datetime(2099, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
+        assert to_naive_utc(dt) == datetime(2099, 1, 1, 0, 0, 0)
+
+    def test_naive_assumed_utc_passes_through(self):
+        dt = datetime(2099, 1, 1, 0, 0, 0)
+        result = to_naive_utc(dt)
+        assert result == dt
+        assert result.tzinfo is None
+
+    def test_none_passes_through(self):
+        assert to_naive_utc(None) is None

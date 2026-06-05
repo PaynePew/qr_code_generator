@@ -37,3 +37,19 @@ class TestEndpointTimestampsCarryUtcMarker:
         auth_client.post("/api/qr/create", json={"url": "https://example.com/tz3"})
         item = auth_client.get("/api/qr").json()["items"][0]
         assert _is_tz_aware_iso(item["created_at"])
+
+
+class TestExpiresAtInputNormalizedToUtc:
+    def test_offset_bearing_expires_at_converted_not_dropped(self, auth_client):
+        # bead r5n: an offset-bearing expires_at must be CONVERTED to UTC, not
+        # have its offset silently dropped. 2099-01-01T00:00:00+08:00 is the
+        # prior day 16:00Z.
+        token = auth_client.post(
+            "/api/qr/create",
+            json={
+                "url": "https://example.com/tzin",
+                "expires_at": "2099-01-01T00:00:00+08:00",
+            },
+        ).json()["token"]
+        data = auth_client.get(f"/api/qr/{token}").json()
+        assert data["expires_at"] == "2098-12-31T16:00:00+00:00"
