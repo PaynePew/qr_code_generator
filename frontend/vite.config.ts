@@ -23,6 +23,9 @@ export default defineConfig(({ mode }) => {
       },
     },
     test: {
+      // Unit/component tests live under src/; e2e/ is Playwright, not vitest —
+      // scope vitest to src/ so it never picks up the .spec.ts under e2e/.
+      include: ['src/**/*.{test,spec}.{ts,tsx}'],
       environment: 'node',
       environmentMatchGlobs: [
         // Component and hook tests that need a DOM run in jsdom.

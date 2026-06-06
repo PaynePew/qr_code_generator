@@ -9,6 +9,8 @@ venv/
 !.env.example
 !.env.prod.example
 !.env.backup.example
+# E2E same-origin config (no secrets — just empties VITE_API_BASE_URL); bead 8vd
+!frontend/.env.test
 
 # SQLite
 *.db
@@ -31,6 +33,12 @@ node_modules/
 
 # Frontend build output
 frontend/dist/
+
+# Playwright E2E (bead 8vd): minted-cookie storageState + run artifacts
+frontend/e2e/.auth/
+frontend/test-results/
+frontend/playwright-report/
+frontend/playwright/.cache/
 
 # Beads / Dolt files (added by bd init)
 .dolt/
