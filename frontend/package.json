@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "e2e:typecheck": "tsc --noEmit --project tsconfig.e2e.json"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.1.0",
