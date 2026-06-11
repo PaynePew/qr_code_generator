@@ -47,7 +47,9 @@ A **Session** is the app's own proof of a signed-in User, carried in a signed, `
 
 ## Scan
 
-A **Scan** is a record of a single redirect attempt on a known token. Scans are logged for all known tokens (302 and 410 outcomes). Unknown tokens (404) do not produce a Scan.
+A **Scan** is a record of a single redirect attempt on a known token. Scans are logged for all known tokens (302 and 410 outcomes); unknown tokens (404) do not produce a Scan.
+
+A Scan is **privacy-preserving by construction**: it retains only coarse, derived attributes — when the scan happened, its outcome, a coarse **geographic origin** (country) and a coarse **device class** — each derived at ingest from the scanner's request and then discarded at the source. The raw scanner IP and user agent are **never stored**, which makes ADR 0006 (the owner sees aggregates, never raw scanner identity) structurally true rather than merely enforced at display time. An owner sees **total** scan counts, not unique-visitor counts, so no per-scanner identifier is retained (not even a salted hash).
 
 ## Token
 

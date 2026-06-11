@@ -11,7 +11,21 @@
 
 ---
 
-## ⏯️ Session state — RESUME HERE (last updated 2026-06-10 — Phase 10 GRILLED → ADR 0015; next = Phase 8)
+## ⏯️ Session state — RESUME HERE (last updated 2026-06-11 — Phase 9 GRILLED → ADR 0016; Phase 8 partially decided (Redis dropped); next = finish Phase 8 then Phase 7)
+
+> **✅ 2026-06-11 — Phase 9 GRILLED → ADR 0016** (done out of order, *before* finishing Phase 8,
+> because Phase 9 unblocks it). Decided: **privacy-by-construction scan model** (store coarse derived
+> `country`+`device_class`, raw IP/UA never stored; total not unique-visitor counts) · **in-process
+> async ingestion** (FastAPI `BackgroundTasks`, at-most-once) — *this is the prerequisite that unblocks
+> the Phase 8 redirect read-cache* · **analytics = live SQL** (`scans_by_country`/`_by_device_class` +
+> coarse `recent_scans`, no IP/UA) · **`SQS→S3→batch` designed but deferred** (~5–8 days if built; needs
+> idempotency + DLQ). Fixes a live **ADR 0006 violation** (`analytics._recent_scans` leaks raw IP/UA).
+> → CONTEXT.md `## Scan` updated. **Phase 8 partial decisions this session: Redis dropped** (read-cache
+> in front of a sync write = theater; Redis's only real homes = post-Phase-9 redirect cache + moving the
+> rate-limiter store off-process to unlock >1 worker) · **image caching = `immutable` on the versioned
+> S3 object, NOT the token endpoint** (which stays a `no-cache` 302 pointer; re-customization, not
+> never-expiry, is the staleness trap) · **CloudFront-on-S3** is feasible & VPS-independent (whole-site
+> CDN is platform-owned). **NEXT FRONTIER = finish Phase 8** (redirect cache now unblocked) **then Phase 7.**
 
 > **✅ 2026-06-05 — Phase 6 is SHIPPED (supersedes the 2026-06-04 "grill PAUSED" note below).**
 > Verified first-hand this session against git + bd (not just roadmap text):
@@ -40,7 +54,7 @@
 > normalization via `idna` · IP-literal blocklist hardening · scheme allowlist already done); reuse
 > `INVALID_URL` 422, redirect path unchanged. **SSRF + malware-reputation DEFERRED** to access-time (ADR
 > 0015 records the fetch-time resolve-and-pin / serve-time-interstitial future home; Safe Browsing v4 is
-> deprecated → Web Risk). Implementation filed: bd `qr_code_generator-ltr` (P2, ready). **NEXT FRONTIER = Phase 8.**
+> deprecated → Web Risk). ✅ **Implemented & merged** — bd `qr_code_generator-ltr` CLOSED (PR #113, `c730311`→`57f96d2`; 460 tests green; independent opus review APPROVE-WITH-NITS). **NEXT FRONTIER = Phase 8 (🔵 grilling now, 2026-06-10).**
 >
 > **🐞 2026-06-05 — 4 issues found in real use, triaged + filed to bd:**
 > - `40o` (#1, P2, bug): user-facing **size/resolution knob still present** — violates ADR 0011
@@ -174,9 +188,9 @@ path), and `tl8` (`boto3` + `python-multipart` deps). Grilling continues just-in
 | 5 | Unified error handling & logging interface | 🆕 | 1–4 | ✅ implemented (ADR 0012, 0013) |
 | 6 | Lightsail deployment (qrcode.paynepew.dev) | #3 | 2+5 | 🟢 **shipped** (epic p6 13/14; backups await 1st timer tick) · 💬 topic #5 → platform |
 | 7 | Frontend redesign (frontend-design) | #6 | 1+4 | ⚪ pending — **deferred to LAST** (06-05); Tailwind v4 `5mz` + labels `nk4` + re-edit `yfx` ride here |
-| 8 | Caching & CDN (Redis + CDN purge + SWR) | 🆕 06-03 | 1+4 | 💬 to discuss |
-| 9 | Analytics & daily reporting (SQS → S3 → batch) | 🆕 06-03 | 1+2 | 💬 to discuss |
-| 10 | Production hardening: URL safety & SSRF | 🆕 06-03 | 1 | ⚪ **NEXT FRONTIER** (06-05) |
+| 8 | Caching & CDN (Redis + CDN purge + SWR) | 🆕 06-03 | 1+4 | 🔵 grilling (06-10) |
+| 9 | Analytics & daily reporting (SQS → S3 → batch) | 🆕 06-03 | 1+2 | 🟢 decided (ADR 0016) |
+| 10 | Production hardening: URL safety & SSRF | 🆕 06-03 | 1 | ✅ implemented (ADR 0015, bd `ltr` / PR #113) |
 
 Legend: 🔵 grilling · 🟢 decided · ✅ implemented (on `main`) · ⚪ pending · 💬 discussion topic queued
 
@@ -432,8 +446,30 @@ the backend `DEMO_READ_ONLY` 403 code), so an interviewer never mistakes read-on
 
 ## Phase 8 — Caching & CDN (Redis + CDN purge + SWR)
 
-**Source:** user topic #2 (2026-06-03). **Status:** 💬 to discuss. **Framing:** 是否為了 demo
-架構完整加入 Redis Cache（為展示完整性，而非當前負載必要）。
+**Source:** user topic #2 (2026-06-03). **Status:** 🔵 GRILLING (opened 2026-06-10; partially decided
+2026-06-11). **Framing:** 是否為了 demo 架構完整加入 Redis Cache（為展示完整性，而非當前負載必要）。
+
+**🟢 Partially decided (2026-06-11) — pending a finishing pass + a Phase-8 ADR:**
+- **Redis: dropped (do not introduce now).** A read-cache in front of the redirect's **synchronous Scan
+  write** is theater, and the read it would shield is a sub-ms PK lookup. Redis has exactly two real homes
+  here, both recorded for the "說詞" / future: (1) **after Phase 9** makes scan-ingestion async, a
+  token→`original_url` cache **with active invalidation on PATCH/DELETE** becomes meaningful; (2) moving
+  the **rate-limiter store** off-process (ADR 0007's in-memory counter pins us to 1 uvicorn worker).
+- **Image caching (the genuinely valuable, honest half) — `immutable` must target the versioned object.**
+  Finding: `GET /api/qr/{token}/image` currently **proxies bytes through the app** (S3 fetch → stream;
+  [router.py:210](../backend/router.py)) with **no `Cache-Control`**. Fix: serve the versioned S3 object
+  `qr/{token}/composite_{uuid}` with `Cache-Control: public, max-age=31536000, immutable`, and turn the
+  **token endpoint into a `no-cache` 302 pointer** to the current version. The staleness trap is
+  **re-customization** (a new `composite_{uuid}` is minted), **not** the never-expiry option — the image
+  encodes the stable Short URL, so a never-expiring link is the *best* case for image caching.
+- **CDN = CloudFront-on-S3, not whole-site.** The image origin is **S3, not the VPS**, so CloudFront drops
+  in front of the bucket independently of the VPS/platform; it only requires serving the S3 URL directly
+  (stop proxying). A **whole-site** CDN (Cloudflare in front of `qrcode.paynepew.dev`) is **platform-owned**
+  (the `edge`, like topic #5) — not qrcode's call, and not where our CDN story lives. **Never CDN-cache the
+  302 redirect** (printed QR outlives any cache; stale destination = sends scanners to the wrong place).
+- **Still to finish:** SWR header specifics · whether to actually stand up CloudFront vs ship correct
+  cache headers + an ADR documenting the drop-in point · the redirect read-cache design (now unblocked by
+  Phase 9: TTL bounded by `expires_at`, active invalidation on edit/delete).
 
 **Goal (proposed).** Add a caching layer so the hot redirect path (`GET /r/{token}` → `original_url`)
 and QR-image fetches don't hit DB/origin on every scan, and so the architecture shows a credible
@@ -461,34 +497,51 @@ shared VPS (Phase 6, memory budget vs scheduler) · caching must NOT swallow the
 
 ## Phase 9 — Analytics & daily reporting (SQS → S3 → batch)
 
-**Source:** user topics #3 + #4 (2026-06-03). **Status:** 💬 to discuss.
+**Source:** user topics #3 + #4 (2026-06-03). **Status:** 🟢 GRILLED 2026-06-11 → **ADR 0016**.
+Framing **corrected during the grill** (mirrors Phase 10): the `SQS→S3→batch` pipeline is
+**for-show at this scale** (a single SQL `GROUP BY` over `scans` is the identical report), and a
+load-bearing code finding reshaped the phase (see below).
 
-**Goal (proposed).** Pin down the scan-event data model and a batch pipeline that turns raw scans
-into a daily report.
+**🔑 Load-bearing findings (verified in code):**
+- The redirect hot path writes a Scan **synchronously** (`scan_repository.record_scan` →
+  `db.add; db.commit`) *before* returning the 302 ([scan_repository.py:26](../backend/scan_repository.py)).
+  The **write**, not the sub-ms PK read, dominates — so a Phase 8 token→`original_url` *read* cache
+  cannot take Postgres off the redirect path until this write is decoupled. **Phase 9 unblocks Phase 8.**
+- `analytics._recent_scans` ([analytics.py:42](../backend/analytics.py)) **leaks raw `ip_address` +
+  `user_agent`** to the owner — a live **ADR 0006 violation** despite the endpoint comment asserting
+  the opposite. Phase 9 fixes it *by construction* (drop the columns).
 
-**#3 — What to record per scan (four Ws, to grill):**
-- **Who** — bounded by **ADR 0006** (owner sees aggregates, never raw scanner IPs); so "who" =
-  derived/coarse (device/UA class, country), not PII. Decide the line.
-- **When** — timestamp (already on `scans`) + derived buckets (hour/day) for rollups.
-- **Where** — geo / referrer, derived from IP at ingest then drop the raw IP (squares with ADR 0006).
-- **What** — which token / Link / campaign (ties to the per-token **label**, Phase 3).
-- *Current:* a `scans` table already exists (per-token; feeds `scan_count` from Phase 1 Q4 and the
-  owner-only `…/analytics`). This phase decides what **columns** it carries.
+**🟢 Decided (2026-06-11) — canonical record in ADR 0016:**
+- **Privacy-by-construction scan model.** A Scan stores only coarse *derived* attributes —
+  `scanned_at`, `status_code`, `token`, **`country`** (from IP at ingest) and **`device_class`**
+  (from UA at ingest); **raw IP + UA derived-then-discarded, never stored**. Owner sees **total**
+  counts, **not** unique-visitors → **no per-scanner identifier** (not even a salted hash). → CONTEXT.md `## Scan`.
+- **In-process async ingestion (option 2), not a queue.** Redirect hands the Scan write to FastAPI
+  `BackgroundTasks` and returns the 302 without blocking on `commit`. Zero new infra; **at-most-once**
+  (a lost scan on crash is acceptable for counting, not billing). This is the foundation the deferred
+  pipeline swaps onto — never throwaway.
+- **Analytics surface = live SQL, not batch.** Owner-only `GET …/analytics` aggregates on demand:
+  `total_scans` · `scans_by_day` · **`scans_by_country`** · **`scans_by_device_class`** · a **coarse
+  `recent_scans`** (`scanned_at`/`status_code`/`country`/`device_class`, **no IP/UA**). Phase 7 renders
+  a dashboard panel. **No** daily email/report job this phase.
+- **Deferred (designed, not built): `SQS→S3→batch` + daily report.** ADR 0016 records the full design —
+  producer enqueues (still async) → durable SQS → consumer batches NDJSON to S3 → daily batch rollup →
+  report (email digest). **Non-negotiable when built:** at-least-once ⇒ **idempotent** consumer/rollup
+  (dedupe by msg id) + **DLQ** for poison messages. Build when volume justifies durable decoupling.
+  Estimate if built robustly ≈ **5–8 working days** (consumer process is the bulk + risk).
 
-**#4 — Daily report pipeline (batch, to grill):**
-- Flow: **scan event → SQS → Consumer → S3 (raw events) → daily Batch Job → Report.**
-- Batch, not real-time: a scheduled daily job aggregates the day's S3 events into per-owner /
-  per-Link / per-token rollups.
-- **Open questions:** is SQS+S3+batch real or for-show at this scale (vs one SQL `GROUP BY` over
-  `scans`)? · where the batch runs (VPS cron vs Lambda/worker) · report delivery (email / dashboard
-  panel / download) · raw-event retention in S3 (ties to Phase 2 + topic #6 cleanup).
+**Impl notes (→ bd when Phase 9 lands):** Alembic migration drops raw `ip_address`/`user_agent`,
+adds `country`/`device_class` (no backfill, per Phase 2 "no data migration"); derive country (IP→geo)
++ device_class (UA parse) at ingest; rewrite `aggregate_scans` (`scans_by_country`/`_by_device_class`,
+coarse `recent_scans`). **`scans`-table retention** (topic #6) stays open — keep-forever is fine at
+this scale; revisit if the table grows.
 
 ---
 
 ## Phase 10 — Production hardening: URL safety & SSRF
 
-**Source:** user topic #7 (2026-06-03). **Status:** ✅ GRILLED 2026-06-10 → **ADR 0015**. Framing
-**corrected during the grill** (see below). Implementation = bd `qr_code_generator-ltr` (ready).
+**Source:** user topic #7 (2026-06-03). **Status:** ✅ IMPLEMENTED 2026-06-10 → **ADR 0015**. Framing
+**corrected during the grill** (see below). Implementation = bd `qr_code_generator-ltr` (**CLOSED**, PR #113 → main `57f96d2`).
 
 **🔑 Framing correction (the load-bearing finding).** The service **never fetches `original_url`
 server-side** — it only *stores* it (create/PATCH) and returns it as a 302 `Location` to the
@@ -592,3 +645,28 @@ phase title keeps "SSRF" for continuity, but the SSRF work is deferred. → CONT
   IPv4-mapped-IPv6 · scheme allowlist (done). Reuse `INVALID_URL` 422 (no new code); redirect unchanged.
   ⚠️ Safe Browsing v4 deprecated → **Web Risk**. Tools: `idna` (promote to explicit dep), `Drawbridge`/
   `ssrf-protect` (future fetch-time). → CONTEXT.md `## Destination URL`; impl bd `qr_code_generator-ltr`.
+- **2026-06-10 (later)** — Phase 10 **implemented & merged** (bd `ltr` CLOSED, PR #113, `c730311`→`57f96d2`):
+  `validate_and_normalize` hardened per ADR 0015 — length cap 2048 · IDNA/UTS-46 punycode · IP-literal
+  blocklist (reserved/multicast/unspecified + IPv4-mapped-IPv6) + IPv6 netloc fix; **460 tests green**; opus
+  review APPROVE-WITH-NITS. Phase 10 → ✅ implemented. **Earlier 06-05 "fix-now" bugs both shipped:** `65g`
+  (customized-QR-shows-vanilla, 4 stacked root causes, Fix = A serve stored composite) + `40o` (size knob)
+  merged in PR #100 (`40b5cfa`), verified in real browser. Quality follow-ups since: timestamp-UTC fixes
+  (`8s8`/`r5n`/`0sq`, PRs #101–103), Playwright e2e auth-bypass (`8vd`, PR #110); new open bead `n1q` =
+  Playwright CI integration (P3). Backups `p6s5` still IN_PROGRESS (awaits first 18:00 UTC timer tick — not
+  yet confirmed). **Phase 8 grill OPENED** — leading finding: the redirect path writes a Scan **synchronously**
+  per hit (`scan_repository.record_scan` does `db.add; db.commit`), so a token→`original_url` *read* cache
+  **cannot** take Postgres off the redirect hot path until Phase 9 makes scan-ingestion async; it only shields
+  an already sub-ms indexed PK lookup. Recasts Phase 8's "redirect doesn't hit DB" story as coupled to Phase 9.
+- **2026-06-11** — Phase 9 grilled (**ADR 0016**), out of order before finishing Phase 8 because it unblocks
+  it. **Privacy-by-construction scan model:** store coarse derived `country`+`device_class`, raw IP/UA
+  **never stored** (makes ADR 0006 structural, not display-time) — surfaced a *live* ADR 0006 violation
+  (`analytics._recent_scans` leaks raw IP/UA). No unique-visitor counts ⇒ no per-scanner id, not even a
+  salted hash. **In-process async ingestion** (FastAPI `BackgroundTasks`, at-most-once) chosen over SQS —
+  removes the sync write from the redirect hot path (unblocking the Phase 8 read-cache) with zero infra;
+  **`SQS→S3→batch` designed but deferred** in the ADR (~5–8 days if built robustly; idempotency + DLQ are
+  the hard parts, exactly what a deep-dive interviewer probes). **Analytics = live SQL** (`GROUP BY`):
+  total/by-day/by-country/by-device + coarse `recent_scans`; daily email/report rides with the deferred
+  pipeline. → CONTEXT.md `## Scan` updated. **Phase 8 partial decisions same session** (see Phase 8
+  section): Redis dropped; image `immutable` on the versioned S3 object + token endpoint as `no-cache` 302
+  pointer (re-customization, not never-expiry, is the staleness trap); CloudFront-on-S3 (VPS-independent),
+  whole-site CDN is platform-owned; never CDN-cache the 302.
