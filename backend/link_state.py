@@ -2,9 +2,21 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Protocol
 
 from .errors import AppError, ErrorCode
 from .models import Link
+
+
+class _LinkStateSource(Protocol):
+    """Structural interface consumed by ``derive_state``.
+
+    Both ``Link`` (ORM model) and ``LinkSnapshot`` (cache dataclass) satisfy
+    this protocol so ``derive_state`` works with either without a ``type: ignore``.
+    """
+
+    deleted_at: datetime | None
+    expires_at: datetime | None
 
 
 class LinkNotFoundError(AppError):
@@ -46,7 +58,7 @@ class LinkState(StrEnum):
         return self is not LinkState.DELETED
 
 
-def derive_state(link: Link, now: datetime) -> LinkState:
+def derive_state(link: _LinkStateSource, now: datetime) -> LinkState:
     if link.deleted_at is not None:
         return LinkState.DELETED
     if link.expires_at is not None and link.expires_at <= now:

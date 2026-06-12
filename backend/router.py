@@ -25,6 +25,7 @@ from .errors import (
     not_found,
     token_allocation_failed,
 )
+from .link_cache import LinkSnapshot, _link_cache
 from .link_state import LinkState, derive_state
 from .models import Link, User
 from .qr_generator import generate_qr_png
@@ -375,15 +376,19 @@ def get_customization(
 
 @redirect_router.get("/r/{token}")
 def redirect(token: str, request: Request, db: Session = Depends(get_db)):
-    link = link_repository.get_link(db, token)
-
-    state = derive_state(link, now_utc())
+    # In-process read-cache (ADR 0017): miss hits Postgres once; hits skip the DB.
+    # LinkNotFoundError from the loader propagates unchanged → 404.
+    # State is derived on every request; expiry resolves automatically without eviction.
+    snapshot: LinkSnapshot = _link_cache.get_or_load(
+        token, lambda: link_repository.get_link(db, token)
+    )
+    state = derive_state(snapshot, now_utc())
     if not state.is_redirectable:
         _log_scan(db, token, 410, request)
         raise link_gone(token)
 
     _log_scan(db, token, 302, request)
-    return RedirectResponse(url=link.original_url, status_code=302)
+    return RedirectResponse(url=snapshot.original_url, status_code=302)
 
 
 @router.get("/qr")
@@ -494,6 +499,9 @@ def patch_link(
         now=now,
     )
 
+    # Evict after DB commit so the very next redirect reads the new state (ADR 0017).
+    _link_cache.evict(token)
+
     cfg = _config()
     new_state = derive_state(link, now_utc())
     return _link_response(link, cfg["base_url"], new_state)
@@ -512,6 +520,8 @@ def delete_link(
     authorize_owner(link, current_user)
     forbid_if_demo(current_user)
     link_repository.mark_deleted(db, link, now_utc())
+    # Evict after DB commit so the very next redirect returns 410 (ADR 0017).
+    _link_cache.evict(token)
     return {"token": token, "status": "deleted"}
 
 

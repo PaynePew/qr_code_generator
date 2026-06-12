@@ -13,5 +13,6 @@ requests>=2.32.0
 itsdangerous>=2.2.0
 python-dotenv>=1.2.2
 alembic>=1.18.4
+cachetools>=5.3.0  # in-process redirect read-cache (ADR 0017)
 psycopg2-binary>=2.9.12
 asgi-correlation-id>=5.0.0
