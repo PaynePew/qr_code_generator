@@ -115,6 +115,13 @@ jobs:
         run: |
           scp ./docker-compose.prod.yml ./backup.sh ./deploy/restore-drill.sh \
             "$DEPLOY_USER@$DEPLOY_HOST:$DEPLOY_DIR/"
+          # scp (no -p) lands files 0644. The systemd unit now ExecStart's via
+          # `bash backup.sh` so it tolerates 0644, but the drill is invoked as
+          # /opt/qrcode/restore-drill.sh and needs +x. Force it on every deploy
+          # so a freshly provisioned box never regresses to status=203/EXEC
+          # "zero backups" (bead -zen).
+          ssh "$DEPLOY_USER@$DEPLOY_HOST" \
+            "chmod +x '$DEPLOY_DIR/backup.sh' '$DEPLOY_DIR/restore-drill.sh'"
 
       # Persist the deployed SHA so EVERY recreate is deterministic — not only this
       # CD run. `/opt/qrcode/.env` is docker compose's variable-interpolation file

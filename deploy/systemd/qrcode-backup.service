@@ -8,4 +8,8 @@ Type=oneshot
 User=deploy
 WorkingDirectory=/opt/qrcode
 EnvironmentFile=/opt/qrcode/.env.backup
-ExecStart=/opt/qrcode/backup.sh
+# Invoke via `bash <script>` rather than executing backup.sh directly, so the
+# unit does NOT depend on the file's +x bit. CD ships backup.sh with plain scp
+# (lands 0644); running it directly gave systemd status=203/EXEC every tick and
+# silently produced zero backups (bead -zen). This form is immune to the mode.
+ExecStart=/usr/bin/env bash /opt/qrcode/backup.sh
