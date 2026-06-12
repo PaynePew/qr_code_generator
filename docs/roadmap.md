@@ -11,8 +11,29 @@
 
 ---
 
-## ⏯️ Session state — RESUME HERE (last updated 2026-06-11 — Phase 9 GRILLED → ADR 0016 + Phase 8 GRILLED → ADR 0017; next = ONE backend build for P8+P9, then Phase 7)
+## ⏯️ Session state — RESUME HERE (last updated 2026-06-12 — P8+P9 backend build LANDED on main (15l/xdm/6bk/uq9) · prod geo wired & verified (4nw) · Phase 6 backups bug fixed → epic p6 CLOSED 14/14; NEXT = Phase 7 frontend redesign, the last phase)
 
+> **✅ 2026-06-12 — P8+P9 backend build LANDED + prod geo wired + Phase 6 backups bug fixed → epic CLOSED.**
+> - **Phase 6 backups were SILENTLY BROKEN, not "awaiting the first tick"** (corrects every note below):
+>   the systemd `qrcode-backup.service` ran `ExecStart=/opt/qrcode/backup.sh` *directly*, but CD ships
+>   `backup.sh` via plain `scp` as `0644` (non-executable) → `status=203/EXEC` on every 18:00 UTC tick since
+>   06-05 → **zero backups ever produced** (the `qrcode-backup` IAM user showed zero activity — the symptom
+>   that opened bd `zen`). **Fixed** (unit → `ExecStart=/usr/bin/env bash …`, `+x` in git, CD `chmod +x`
+>   post-scp) and **verified**: dump in S3 (`AES256`), `restore-drill` PASSED, IAM key now active, **14-day
+>   lifecycle confirmed**. → **bd `zen` CLOSED; `p6s5` + epic `p6` CLOSED (14/14).** Phase 6 is now *actually*
+>   complete, not just "shipped, backups pending".
+> - **P8+P9 backend build landed on `main`** (the "ONE backend build" the prior note pointed to):
+>   `15l` (privacy-by-construction `Scan` + in-process async redirect ingest), `xdm` (coarse scan-analytics
+>   UI, drops `user_agent`), `6bk` (bucket-correctness tests), `uq9` (independent DB Session for the async 302
+>   scan write); `link_cache.py` (redirect `TTLCache`) + image `immutable` + `ebf` (CloudFront + OAC,
+>   `CDN_BASE_URL`) confirm ADR 0016/0017 now have code on `main`.
+> - **Prod geo wired & VERIFIED (bd `4nw`).** GeoLite2-City `.mmdb` on the box, **bind-mounted ro** into
+>   `qrcode-app`, weekly `geoipupdate` cron; `derive_geo('8.8.8.8') → ('US', None)`; `scans` carries
+>   `country`/`subdivision`/`device_class`. ⚠️ Gotcha (now in the runbook + bd memory): geoipupdate's
+>   compiled-default `DatabaseDirectory` on this box is `/var/lib/GeoIP`, **not** `/usr/share/GeoIP` — pin it.
+> - **NEXT = Phase 7 (frontend redesign) — the last phase.** Carries the analytics dashboard panel
+>   (ADR 0016), labels `nk4`, re-edit-in-LinkDetail `yfx`, Tailwind v3→v4 `5mz`; React 19 `n13` decoupled.
+>
 > **✅ 2026-06-11 — Phase 9 GRILLED → ADR 0016** (done out of order, *before* finishing Phase 8,
 > because Phase 9 unblocks it). Decided: **privacy-by-construction scan model** (store coarse derived
 > `country`+`device_class`, raw IP/UA never stored; total not unique-visitor counts) · **in-process
@@ -190,10 +211,10 @@ path), and `tl8` (`boto3` + `python-multipart` deps). Grilling continues just-in
 | 3 | Ownership & duplicate-URL / token-collision rules | #5 | 0+1 | ✅ implemented (ADR 0010) |
 | 4 | QR image object storage (**S3**) | #2 | 1 | ✅ implemented (ADR 0011) · S3 provisioned (6c0) |
 | 5 | Unified error handling & logging interface | 🆕 | 1–4 | ✅ implemented (ADR 0012, 0013) |
-| 6 | Lightsail deployment (qrcode.paynepew.dev) | #3 | 2+5 | 🟢 **shipped** (epic p6 13/14; backups await 1st timer tick) · 💬 topic #5 → platform |
-| 7 | Frontend redesign (frontend-design) | #6 | 1+4 | ⚪ pending — **deferred to LAST** (06-05); Tailwind v4 `5mz` + labels `nk4` + re-edit `yfx` ride here |
-| 8 | Caching & CDN (Redis + CDN purge + SWR) | 🆕 06-03 | 1+4 | 🟢 decided (ADR 0017) |
-| 9 | Analytics & daily reporting (SQS → S3 → batch) | 🆕 06-03 | 1+2 | 🟢 decided (ADR 0016) |
+| 6 | Lightsail deployment (qrcode.paynepew.dev) | #3 | 2+5 | ✅ **shipped** (epic p6 **CLOSED 14/14**; backups were silently failing → fixed & verified 06-12, bd `zen`) · 💬 topic #5 → platform |
+| 7 | Frontend redesign (frontend-design) | #6 | 1+4 | ⚪ pending — **next & LAST** (06-05); analytics panel (ADR 0016) + Tailwind v4 `5mz` + labels `nk4` + re-edit `yfx` ride here |
+| 8 | Caching & CDN (Redis + CDN purge + SWR) | 🆕 06-03 | 1+4 | ✅ backend on `main` 06-12 (`link_cache` redirect cache + image `immutable` + `ebf` CloudFront/OAC) · ADR 0017 |
+| 9 | Analytics & daily reporting (SQS → S3 → batch) | 🆕 06-03 | 1+2 | ✅ backend on `main` 06-12 (`15l`/`xdm`; geo `4nw` live in prod) · ADR 0016 |
 | 10 | Production hardening: URL safety & SSRF | 🆕 06-03 | 1 | ✅ implemented (ADR 0015, bd `ltr` / PR #113) |
 
 Legend: 🔵 grilling · 🟢 decided · ✅ implemented (on `main`) · ⚪ pending · 💬 discussion topic queued
@@ -450,8 +471,9 @@ the backend `DEMO_READ_ONLY` 403 code), so an interviewer never mistakes read-on
 
 ## Phase 8 — Caching & CDN (Redis + CDN purge + SWR)
 
-**Source:** user topic #2 (2026-06-03). **Status:** 🔵 GRILLING (opened 2026-06-10; partially decided
-2026-06-11). **Framing:** 是否為了 demo 架構完整加入 Redis Cache（為展示完整性，而非當前負載必要）。
+**Source:** user topic #2 (2026-06-03). **Status:** 🟢 GRILLED → **ADR 0017** (2026-06-11) · ✅ **backend on
+`main`** 06-12 (`link_cache.py` redirect `TTLCache` + image `immutable` + `ebf` CloudFront/OAC). **Framing:**
+是否為了 demo 架構完整加入 Redis Cache（為展示完整性，而非當前負載必要）。
 
 **🟢 Decided (2026-06-11) — canonical record in ADR 0017:**
 - **Redis: dropped (do not introduce now).** A read-cache in front of the redirect's **synchronous Scan
@@ -511,7 +533,9 @@ shared VPS (Phase 6, memory budget vs scheduler) · caching must NOT swallow the
 
 ## Phase 9 — Analytics & daily reporting (SQS → S3 → batch)
 
-**Source:** user topics #3 + #4 (2026-06-03). **Status:** 🟢 GRILLED 2026-06-11 → **ADR 0016**.
+**Source:** user topics #3 + #4 (2026-06-03). **Status:** 🟢 GRILLED 2026-06-11 → **ADR 0016** · ✅ **backend
+on `main`** 06-12 (`15l` scan model + async ingest, `xdm` analytics UI; geo `4nw` live in prod — `scans`
+derives `country`/`subdivision`/`device_class`).
 Framing **corrected during the grill** (mirrors Phase 10): the `SQS→S3→batch` pipeline is
 **for-show at this scale** (a single SQL `GROUP BY` over `scans` is the identical report), and a
 load-bearing code finding reshaped the phase (see below).
@@ -696,3 +720,15 @@ phase title keeps "SSRF" for continuity, but the SSRF work is deferred. → CONT
   default `*.cloudfront.net`; custom domain deferred, hidden behind the 302 anyway). HITL AWS provisioning
   like S3 `6c0`. SWR dropped (immutable assets don't need it). **Next = ONE backend build for P8+P9** (same
   redirect/scan code), then Phase 7.
+- **2026-06-12** — **P8+P9 backend build landed + prod geo + Phase 6 backups bug.** The "ONE backend build"
+  shipped to `main`: `15l` (privacy-by-construction `Scan` + in-process async redirect ingest), `xdm` (coarse
+  scan-analytics UI, drops `user_agent`), `6bk` (bucket-correctness tests), `uq9` (independent DB Session for
+  the async 302 scan write); `link_cache.py` (redirect `TTLCache`) + image `immutable` + `ebf` CloudFront/OAC
+  (`CDN_BASE_URL`) confirm ADR 0017's cache/CDN on `main`. **Prod geo (`4nw`):** GeoLite2-City bind-mounted ro
+  into `qrcode-app` + weekly `geoipupdate` cron; verified `derive_geo('8.8.8.8')→('US',None)`, `scans` has
+  `country`/`subdivision`/`device_class`. ⚠️ geoipupdate's compiled-default `DatabaseDirectory` on this box is
+  `/var/lib/GeoIP`, **not** `/usr/share/GeoIP` — pinned (runbook + bd memory `geoipupdate-databasedirectory-…`).
+  **Phase 6 backups were silently FAILING, not "awaiting the first tick":** `qrcode-backup.service` exec'd a
+  `0644` (scp'd, non-executable) `backup.sh` directly → `203/EXEC` every tick since 06-05, **zero backups**.
+  Fixed (unit → `bash <script>`, `+x` in git, CD `chmod`), verified (S3 dump `AES256` + `restore-drill` PASS +
+  IAM active + 14d lifecycle). **bd `zen` + `p6s5` + epic `p6` CLOSED (14/14).** Next frontier = Phase 7 (last phase).
