@@ -20,6 +20,14 @@ services:
     depends_on:
       qrcode-migrate:
         condition: service_completed_successfully
+    volumes:
+      # GeoLite2-City DB for scan_derivation (ADR 0016, bd bii/4nw). The host's
+      # /usr/share/GeoIP is maintained by a weekly `geoipupdate` cron; mount it
+      # read-only so the app reads it at GEOIP_DB_PATH
+      # (/usr/share/GeoIP/GeoLite2-City.mmdb) without baking the ~60MB licensed
+      # DB into the image. A missing file => scan_derivation degrades to NULL geo
+      # (logs a warning, never breaks the redirect).
+      - /usr/share/GeoIP:/usr/share/GeoIP:ro
     networks:
       - default          # reach own Postgres
       - edge             # reached by the shared edge Caddy as qrcode-app:8000
