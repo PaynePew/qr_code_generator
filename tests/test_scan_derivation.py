@@ -6,6 +6,7 @@ Acceptance criteria (from issue qr_code_generator-15l):
 - None / empty input handling for both functions.
 - derive_geo degrades gracefully when GEOIP_DB_PATH is unset.
 """
+
 from __future__ import annotations
 
 import pytest

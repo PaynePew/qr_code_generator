@@ -16,10 +16,9 @@ Each test gets its own in-memory factory (separate connection per request,
 consistent with how FastAPI's real ``get_db`` creates a fresh session per
 request) so SQLAlchemy object identity / detachment issues don't interfere.
 """
+
 from __future__ import annotations
 
-import os
-import tempfile
 from datetime import datetime
 from typing import Generator
 
@@ -28,13 +27,12 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+import backend.router as router_mod
 from backend.auth import get_current_user
 from backend.link_cache import LinkCache
 from backend.main import app
 from backend.models import Base, User
 from backend.router import get_db
-import backend.router as router_mod
-
 
 # ---------------------------------------------------------------------------
 # Per-test SQLite engine (one file per test to ensure full isolation)

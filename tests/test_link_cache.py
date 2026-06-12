@@ -3,6 +3,7 @@
 Tests cover: cache hit / miss, load-on-miss, eviction, derive-on-read
 semantics (expired entry yields 410 without eviction), and no-negative-caching.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -13,7 +14,6 @@ import pytest
 from backend.link_cache import LinkCache, LinkSnapshot
 from backend.link_state import LinkState, derive_state
 from backend.models import Link
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -146,7 +146,9 @@ class TestDeriveStateOnRead:
             deleted_at=None,
         )
         # Synthesize a Link-like object for derive_state
-        link = _make_link(expires_at=snapshot.expires_at, deleted_at=snapshot.deleted_at)
+        link = _make_link(
+            expires_at=snapshot.expires_at, deleted_at=snapshot.deleted_at
+        )
         assert derive_state(link, _now()) == LinkState.ACTIVE
 
     def test_expired_snapshot_resolves_to_expired_without_eviction(self):

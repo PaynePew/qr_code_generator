@@ -21,6 +21,7 @@ Design contract (from ADR 0017):
 - **Correct only at one worker** (in-process).  Going multi-worker requires a
   shared Redis layer (ADR 0017; prerequisite recorded there).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -59,14 +60,10 @@ class LinkCache:
     """
 
     def __init__(self, ttl: int = _TTL_SECONDS, maxsize: int = _MAX_SIZE) -> None:
-        self._cache: TTLCache[str, LinkSnapshot] = TTLCache(
-            maxsize=maxsize, ttl=ttl
-        )
+        self._cache: TTLCache[str, LinkSnapshot] = TTLCache(maxsize=maxsize, ttl=ttl)
         self._lock = Lock()
 
-    def get_or_load(
-        self, token: str, loader: Callable[[], Link]
-    ) -> LinkSnapshot:
+    def get_or_load(self, token: str, loader: Callable[[], Link]) -> LinkSnapshot:
         """Return a cached snapshot, or call *loader* to populate the cache.
 
         *loader* is called **only on a cache miss** and must return the Link

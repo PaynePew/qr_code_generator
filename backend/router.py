@@ -448,7 +448,9 @@ def redirect(
     # db.commit (ADR 0016 §2: off the hot path; at-most-once is acceptable for analytics).
     # The task opens its OWN session from the request session's bind — by the time it
     # runs, FastAPI (>=0.106) has already closed this request's get_db session (bead uq9).
-    background_tasks.add_task(_record_scan_background, db.get_bind(), token, 302, ip, ua)
+    background_tasks.add_task(
+        _record_scan_background, db.get_bind(), token, 302, ip, ua
+    )
     return RedirectResponse(url=snapshot.original_url, status_code=302)
 
 

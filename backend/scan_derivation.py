@@ -17,6 +17,7 @@ Privacy guarantees enforced structurally:
   is never returned.
 - This module never imports from the HTTP layer (no FastAPI / Starlette).
 """
+
 from __future__ import annotations
 
 import logging
@@ -153,6 +154,7 @@ def derive_device_class(user_agent: str | None) -> str:
 # ---------------------------------------------------------------------------
 # Test-seam: allow tests to reset the lazy reader (e.g. to inject a fake path)
 # ---------------------------------------------------------------------------
+
 
 def _reset_reader_for_tests() -> None:
     """Reset the module-level reader state so tests can inject GEOIP_DB_PATH."""

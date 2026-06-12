@@ -91,7 +91,9 @@ class TestScanLogging:
 
         # Hand the background task only the bind (as the redirect handler does) —
         # no live session. It must still persist the scan via its own session.
-        _record_scan_background(db_session.get_bind(), "BGSESS1", 302, None, "Googlebot/2.1")
+        _record_scan_background(
+            db_session.get_bind(), "BGSESS1", 302, None, "Googlebot/2.1"
+        )
 
         rows = db_session.query(Scan).filter(Scan.token == "BGSESS1").all()
         assert len(rows) == 1
