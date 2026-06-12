@@ -99,6 +99,7 @@ const MOCK_LINK = {
   original_url: 'https://example.com/page',
   short_url: 'https://s.example.com/r/tok1234',
   qr_code_url: '',
+  label: 'Newsletter',
   status: 'active' as const,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
@@ -122,6 +123,7 @@ function makeLinkEntryStub(overrides = {}) {
     queryError: null,
     updateUrl: Object.assign(vi.fn(), { isPending: false, error: null }),
     updateExpiry: Object.assign(vi.fn(), { isPending: false, error: null }),
+    updateLabel: Object.assign(vi.fn(), { isPending: false, error: null }),
     markDeleted: Object.assign(vi.fn(), { isPending: false, error: null }),
     ...overrides,
   }
@@ -196,5 +198,63 @@ describe('LinkDetail — download (bead 65g)', () => {
     render(createElement(LinkDetail))
 
     expect(screen.getByRole('button', { name: /下載/ })).toBeTruthy()
+  })
+})
+
+describe('LinkDetail — label display and edit (issue nk4)', () => {
+  it('shows the label as the page heading when a label is set', () => {
+    render(createElement(LinkDetail))
+
+    const headings = screen.getAllByRole('heading', { level: 1 })
+    expect(headings.some((h) => h.textContent?.includes('Newsletter'))).toBe(true)
+  })
+
+  it('shows the token alongside the label heading', () => {
+    render(createElement(LinkDetail))
+
+    // Token must still be visible (secondary) when a label is shown
+    expect(screen.getByText('tok1234')).toBeTruthy()
+  })
+
+  it('shows the label in the link info section', () => {
+    render(createElement(LinkDetail))
+
+    // The label field heading must be present
+    expect(screen.getByText('標籤')).toBeTruthy()
+    // The mock label value appears at least once (heading + info section)
+    expect(screen.getAllByText('Newsletter').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('shows "（未設定）" when label is null', () => {
+    useLinkEntryMock.mockReturnValue(
+      makeLinkEntryStub({
+        link: { ...MOCK_LINK, label: null },
+      }) as ReturnType<typeof useLinkEntry>,
+    )
+    render(createElement(LinkDetail))
+
+    expect(screen.getByText('（未設定）')).toBeTruthy()
+  })
+
+  it('renders an edit button for the label field on an active link', () => {
+    render(createElement(LinkDetail))
+
+    // There should be an "編輯" button within the label section.
+    // The page has multiple "編輯" buttons (URL, expiry, label), just assert at least one exists.
+    const editBtns = screen.getAllByRole('button', { name: /編輯/ })
+    expect(editBtns.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('does NOT render a label edit button for a deleted link', () => {
+    useLinkEntryMock.mockReturnValue(
+      makeLinkEntryStub({
+        status: 'deleted',
+        link: { ...MOCK_LINK, status: 'deleted' },
+      }) as ReturnType<typeof useLinkEntry>,
+    )
+    render(createElement(LinkDetail))
+
+    // No edit buttons at all on a deleted link
+    expect(screen.queryAllByRole('button', { name: /編輯/ })).toHaveLength(0)
   })
 })

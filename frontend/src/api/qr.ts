@@ -3,6 +3,7 @@ import { apiClient } from './client'
 export interface CreateQrRequest {
   url: string
   expires_at?: string | null
+  label?: string | null
 }
 
 export interface CreateQrResponse {
@@ -10,6 +11,7 @@ export interface CreateQrResponse {
   short_url: string
   qr_code_url: string
   original_url: string
+  label: string | null
 }
 
 export async function createQr(body: CreateQrRequest): Promise<CreateQrResponse> {
@@ -24,6 +26,7 @@ export interface GetLinkResponse {
   original_url: string
   short_url: string
   qr_code_url: string
+  label: string | null
   status: LinkStatus
   created_at: string
   updated_at: string
@@ -39,6 +42,7 @@ export interface LinkListItem {
   token: string
   original_url: string
   short_url: string
+  label: string | null
   status: LinkStatus
   scan_count: number
   created_at: string
@@ -65,6 +69,7 @@ export async function listLinks(deleted = false): Promise<LinkListResponse> {
 export interface PatchLinkRequest {
   original_url?: string
   expires_at?: string | null
+  label?: string | null
 }
 
 export async function patchLink(token: string, body: PatchLinkRequest): Promise<GetLinkResponse> {

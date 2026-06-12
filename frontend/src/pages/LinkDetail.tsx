@@ -501,11 +501,95 @@ function EditExpiresAtForm({
   )
 }
 
+function EditLabelForm({
+  initialLabel,
+  entry,
+  onCancel,
+  onSuccess,
+}: {
+  initialLabel: string | null
+  entry: DerivedEntry
+  onCancel: () => void
+  onSuccess: () => void
+}) {
+  const form = useForm({
+    defaultValues: { label: initialLabel ?? '' },
+    async onSubmit({ value }) {
+      try {
+        const trimmed = value.label.trim()
+        await entry.updateLabel(trimmed || null)
+        toast.success('標籤已更新', getToastOptions('success'))
+        onSuccess()
+      } catch (err) {
+        if (nudgeIfDemoReadOnly(err as ApiError)) return
+        toast.error('更新失敗，請稍後再試。', getToastOptions('error'))
+      }
+    },
+  })
+
+  const isPending = entry.updateLabel.isPending
+
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        form.handleSubmit()
+      }}
+      className="flex flex-col gap-2"
+    >
+      <form.Field name="label">
+        {(field) => (
+          <input
+            type="text"
+            maxLength={100}
+            placeholder="輸入標籤（選填）"
+            className="rounded-md border border-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50"
+            value={field.state.value}
+            onChange={(e) => field.handleChange(e.target.value)}
+            onBlur={field.handleBlur}
+            disabled={isPending}
+            autoFocus
+          />
+        )}
+      </form.Field>
+
+      <div className="flex gap-2">
+        <Button
+          type="submit"
+          size="sm"
+          disabled={isPending}
+          className={isPending ? 'grayscale' : ''}
+        >
+          {isPending ? (
+            <>
+              <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+              儲存中…
+            </>
+          ) : (
+            '儲存'
+          )}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onCancel}
+          disabled={isPending}
+        >
+          取消
+        </Button>
+      </div>
+    </form>
+  )
+}
+
 export function LinkDetail() {
   const { token } = useParams<{ token: string }>()
   const navigate = useNavigate()
   const [isEditing, setIsEditing] = useState(false)
   const [isEditingExpiry, setIsEditingExpiry] = useState(false)
+  const [isEditingLabel, setIsEditingLabel] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   const entry = useLinkEntry(token ?? '')
@@ -551,7 +635,12 @@ export function LinkDetail() {
       </button>
 
       <div className="flex items-center gap-2 flex-wrap">
-        <h1 className="text-2xl font-bold font-mono">{token}</h1>
+        <h1 className="text-2xl font-bold">
+          {entry.link?.label ?? <span className="font-mono">{token}</span>}
+        </h1>
+        {entry.link?.label && (
+          <span className="text-sm text-muted-foreground font-mono">{token}</span>
+        )}
         {entry.isLoading ? (
           <span className="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium bg-muted text-muted-foreground animate-pulse">
             載入中
@@ -588,6 +677,34 @@ export function LinkDetail() {
             <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
               連結資訊
             </h2>
+
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">標籤</span>
+                {!isEditingLabel && entry.status !== 'deleted' && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingLabel(true)}
+                    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    編輯
+                  </button>
+                )}
+              </div>
+              {isEditingLabel ? (
+                <EditLabelForm
+                  initialLabel={entry.link.label}
+                  entry={entry}
+                  onCancel={() => setIsEditingLabel(false)}
+                  onSuccess={() => setIsEditingLabel(false)}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  {entry.link.label ?? '（未設定）'}
+                </p>
+              )}
+            </div>
 
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2">

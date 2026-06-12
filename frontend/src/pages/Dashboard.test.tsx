@@ -49,6 +49,7 @@ const MOCK_ITEMS = [
     token: 'abc1234',
     original_url: 'https://example.com/long',
     short_url: 'https://s.example.com/r/abc1234',
+    label: 'Lobby poster',
     status: 'active' as const,
     scan_count: 3,
     created_at: '2026-01-01T00:00:00Z',
@@ -58,6 +59,7 @@ const MOCK_ITEMS = [
     token: 'xyz9999',
     original_url: 'https://another.example.com/path',
     short_url: 'https://s.example.com/r/xyz9999',
+    label: null,
     status: 'active' as const,
     scan_count: 0,
     created_at: '2026-01-02T00:00:00Z',
@@ -118,5 +120,28 @@ describe('Dashboard — QR thumbnail (bead 65g)', () => {
       expect(el.width).toBeGreaterThan(0)
       expect(el.height).toBeGreaterThan(0)
     }
+  })
+})
+
+describe('Dashboard — label display (issue nk4)', () => {
+  it('renders the label as the primary text when a link has a label', () => {
+    render(createElement(Dashboard))
+
+    expect(screen.getByText('Lobby poster')).toBeTruthy()
+  })
+
+  it('falls back to showing the URL when a link has no label', () => {
+    render(createElement(Dashboard))
+
+    // The second item has label: null — its original_url should appear
+    expect(screen.getByText(/another\.example\.com/)).toBeTruthy()
+  })
+
+  it('uses label in the card aria-label when present', () => {
+    render(createElement(Dashboard))
+
+    // Card with label 'Lobby poster' should use it in the aria-label
+    const card = screen.getByRole('button', { name: /Lobby poster/ })
+    expect(card).toBeTruthy()
   })
 })

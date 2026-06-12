@@ -23,4 +23,5 @@ export type DerivedEntry = {
   markDeleted: EntryAction
   updateExpiry: EntryAction<string | null>
   updateUrl: EntryAction<string>
+  updateLabel: EntryAction<string | null>
 }

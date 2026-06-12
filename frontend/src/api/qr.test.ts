@@ -23,6 +23,7 @@ describe('getLink', () => {
     original_url: 'https://example.com',
     short_url: 'https://s.example.com/r/abc1234',
     qr_code_url: '',
+    label: null,
     status: 'active' as const,
     created_at: '2026-01-01T00:00:00Z',
     updated_at: '2026-01-01T00:00:00Z',
@@ -60,6 +61,7 @@ describe('patchLink', () => {
       original_url: 'https://new.example.com',
       short_url: 'https://s.example.com/r/abc1234',
       qr_code_url: '',
+      label: null,
       status: 'active',
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-02T00:00:00Z',
@@ -83,6 +85,7 @@ describe('patchLink', () => {
       original_url: 'https://example.com',
       short_url: '',
       qr_code_url: '',
+      label: null,
       status: 'active',
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-01-02T00:00:00Z',
@@ -102,6 +105,7 @@ describe('patchLink', () => {
       original_url: 'https://updated.example.com',
       short_url: 'https://s.example.com/r/xyz9999',
       qr_code_url: '',
+      label: null,
       status: 'active',
       created_at: '2026-01-01T00:00:00Z',
       updated_at: '2026-02-01T00:00:00Z',
@@ -112,6 +116,46 @@ describe('patchLink', () => {
     const result = await patchLink('xyz9999', { original_url: 'https://updated.example.com' })
 
     expect(result).toEqual(mockData)
+  })
+
+  it('sends PATCH /qr/{token} with label body', async () => {
+    const mockData = {
+      token: 'abc1234',
+      original_url: 'https://example.com',
+      short_url: '',
+      qr_code_url: '',
+      label: 'Lobby poster',
+      status: 'active',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-02T00:00:00Z',
+      expires_at: null,
+    }
+    vi.mocked(apiClient.patch).mockResolvedValueOnce({ data: mockData })
+
+    const result = await patchLink('abc1234', { label: 'Lobby poster' })
+
+    expect(apiClient.patch).toHaveBeenCalledWith('/api/qr/abc1234', { label: 'Lobby poster' })
+    expect(result.label).toBe('Lobby poster')
+  })
+
+  it('sends PATCH /qr/{token} with label: null to clear a label', async () => {
+    const mockData = {
+      token: 'abc1234',
+      original_url: 'https://example.com',
+      short_url: '',
+      qr_code_url: '',
+      label: null,
+      status: 'active',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-02T00:00:00Z',
+      expires_at: null,
+    }
+    vi.mocked(apiClient.patch).mockResolvedValueOnce({ data: mockData })
+
+    const result = await patchLink('abc1234', { label: null })
+
+    expect(apiClient.patch).toHaveBeenCalledWith('/api/qr/abc1234', { label: null })
+    expect(result.label).toBeNull()
   })
 })
 
@@ -140,6 +184,7 @@ describe('listLinks', () => {
         token: 'abc1234',
         original_url: 'https://example.com',
         short_url: 'https://s.example.com/r/abc1234',
+        label: 'Lobby poster',
         status: 'active' as const,
         scan_count: 7,
         created_at: '2026-01-02T00:00:00Z',
@@ -173,6 +218,14 @@ describe('listLinks', () => {
     expect(result.items).toHaveLength(1)
     expect(result.items[0].scan_count).toBe(7)
     expect(result.next_cursor).toBeNull()
+  })
+
+  it('returns label in each list item', async () => {
+    vi.mocked(apiClient.get).mockResolvedValueOnce({ data: mockList })
+
+    const result = await listLinks()
+
+    expect(result.items[0].label).toBe('Lobby poster')
   })
 })
 

@@ -73,6 +73,11 @@ export function useLinkEntry(token: string): DerivedEntry {
     onSuccess: onLinkMutated,
   })
 
+  const patchLabelMut = useMutation<GetLinkResponse, ApiError, string | null>({
+    mutationFn: (label) => patchLink(token, { label }),
+    onSuccess: onLinkMutated,
+  })
+
   const markDeleted = makeAction<void>(
     () => deleteMut.mutateAsync(),
     deleteMut.isPending,
@@ -88,6 +93,11 @@ export function useLinkEntry(token: string): DerivedEntry {
     patchUrlMut.isPending,
     patchUrlMut.error,
   )
+  const updateLabel = makeAction<string | null>(
+    (label) => patchLabelMut.mutateAsync(label),
+    patchLabelMut.isPending,
+    patchLabelMut.error,
+  )
 
   return {
     token,
@@ -98,6 +108,7 @@ export function useLinkEntry(token: string): DerivedEntry {
     markDeleted,
     updateExpiry,
     updateUrl,
+    updateLabel,
   }
 }
 

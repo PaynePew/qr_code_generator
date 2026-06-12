@@ -56,7 +56,7 @@ function LinkCard({ item }: { item: LinkListItem }) {
           navigate(`/dashboard/${item.token}`)
         }
       }}
-      aria-label={`查看 ${item.token} 的詳情`}
+      aria-label={`查看 ${item.label ?? item.token} 的詳情`}
     >
       {/* QR thumbnail — authoritative stored composite (bead 65g).
           Note: LinkListItem does not carry customization updated_at, so cache-bust
@@ -72,9 +72,24 @@ function LinkCard({ item }: { item: LinkListItem }) {
 
       <div className="flex flex-col gap-2 flex-1 min-w-0">
       <div className="flex items-start justify-between gap-2">
-        <span className="text-sm font-medium truncate flex-1 min-w-0" title={item.original_url}>
-          {truncateUrl(item.original_url)}
-        </span>
+        <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+          {item.label && (
+            <span className="text-sm font-semibold truncate" title={item.label}>
+              {item.label}
+            </span>
+          )}
+          <span
+            className={[
+              'truncate',
+              item.label
+                ? 'text-xs text-muted-foreground'
+                : 'text-sm font-medium',
+            ].join(' ')}
+            title={item.original_url}
+          >
+            {truncateUrl(item.original_url)}
+          </span>
+        </div>
         <StatusBadge
           status={item.status}
           className={item.status === 'deleted' ? 'line-through' : undefined}

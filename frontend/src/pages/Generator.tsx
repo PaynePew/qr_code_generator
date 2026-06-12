@@ -308,10 +308,15 @@ export function Generator() {
   }, [currentToken])
 
   const form = useForm({
-    defaultValues: { url: '' },
+    defaultValues: { url: '', label: '' },
     onSubmit({ value }) {
+      const trimmedLabel = value.label.trim()
       mutation.mutate(
-        { url: value.url, expires_at: resolveExpiresAt(expiresPreset, customExpiresAt) },
+        {
+          url: value.url,
+          expires_at: resolveExpiresAt(expiresPreset, customExpiresAt),
+          label: trimmedLabel || null,
+        },
         { onSuccess: onCreateSuccess, onError: onCreateError },
       )
     },
@@ -344,7 +349,7 @@ export function Generator() {
     setStyle(defaultStyle)
     setExpiresPreset('never')
     setCustomExpiresAt(toDatetimeLocalValue(new Date(computeExpiresAt(new Date(), '+30d')!)))
-    form.reset()
+    form.reset({ url: '', label: '' })
     mutation.reset()
   }
 
@@ -488,6 +493,30 @@ export function Generator() {
                   </div>
                 )
               }}
+            </form.Field>
+
+            <form.Field name="label">
+              {(field) => (
+                <div className="flex flex-col gap-1">
+                  <label htmlFor="label-input" className="text-sm font-medium">
+                    標籤（選填）
+                  </label>
+                  <input
+                    id="label-input"
+                    type="text"
+                    maxLength={100}
+                    placeholder="例：大廳海報、電子報…"
+                    className="rounded-md border border-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50"
+                    value={field.state.value}
+                    onChange={(e) => field.handleChange(e.target.value)}
+                    onBlur={field.handleBlur}
+                    disabled={mutation.isPending}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    為此連結取一個好記的名字，方便在儀表板辨識。
+                  </p>
+                </div>
+              )}
             </form.Field>
 
             <div className="rounded-lg border border-border">
