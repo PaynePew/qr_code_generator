@@ -615,24 +615,49 @@ export function LinkDetail() {
 
   const shortUrl = entry.link?.short_url ?? null
 
-  // Seed edit state from server customization when the panel opens
-  function openCustomizationEdit() {
+  // Seed edit state from server customization when the panel opens.
+  //
+  // The existing logo is re-hydrated from logo_url into a File so that editing
+  // only the colours/dot-style does NOT silently destroy it: PUT
+  // /qr/{token}/customization treats an *omitted* logo as "clear the previous
+  // logo", so a kept logo has to be re-sent on save. Fetching the bytes (rather
+  // than pointing the renderer at the remote logo_url) keeps the composite
+  // canvas same-origin — no tainting on toBlob — and lets the kept logo flow
+  // through the exact same path as a fresh upload (bead qr_code_generator-yfx).
+  async function openCustomizationEdit() {
     const c = customizationHook.customization
-    if (c) {
-      setEditStyle({
-        foreground: c.style.foreground,
-        background: c.style.background,
-        dotType: (c.style.dotType as QRStyle['dotType']) ?? DEFAULT_STYLE.dotType,
-        ecl: (c.style.ecl as QRStyle['ecl']) ?? DEFAULT_STYLE.ecl,
-      })
-    } else {
-      setEditStyle({ ...DEFAULT_STYLE })
-    }
+    setEditStyle(
+      c
+        ? {
+            foreground: c.style.foreground,
+            background: c.style.background,
+            dotType: (c.style.dotType as QRStyle['dotType']) ?? DEFAULT_STYLE.dotType,
+            ecl: (c.style.ecl as QRStyle['ecl']) ?? DEFAULT_STYLE.ecl,
+          }
+        : { ...DEFAULT_STYLE },
+    )
+    revokeEditLogo()
     setEditLogoObjectUrl(null)
     setEditLogoFile(null)
     setEditLogoScale(0.2)
     setEditLogoError(null)
     setIsEditingCustomization(true)
+
+    if (c?.logo_url) {
+      try {
+        const resp = await fetch(c.logo_url)
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+        const blob = await resp.blob()
+        const file = new File([blob], 'logo', { type: blob.type || 'image/png' })
+        handleEditLogoAccepted(file)
+      } catch {
+        // Could not re-hydrate the existing logo. Warn rather than let the next
+        // save silently strip it (the backend clears the logo when none is sent).
+        setEditLogoError(
+          '無法載入現有 Logo；若未重新上傳，儲存後將會移除原有 Logo。',
+        )
+      }
+    }
   }
 
   function revokeEditLogo() {

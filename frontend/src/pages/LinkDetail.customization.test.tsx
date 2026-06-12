@@ -5,7 +5,7 @@
  * (bead qr_code_generator-yfx): owner can open an inline editor,
  * adjust colours/dot-style/logo and save; demo account gets nudged.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { createElement } from 'react'
 
@@ -71,6 +71,7 @@ vi.mock('@/components/ui/StatusBadge', () => ({
 vi.mock('@/components/QRCustomizer', () => ({
   QRCustomizer: ({
     onStyleChange,
+    logoObjectUrl,
     disabled,
   }: {
     style: unknown
@@ -84,7 +85,11 @@ vi.mock('@/components/QRCustomizer', () => ({
   }) =>
     createElement(
       'div',
-      { 'data-testid': 'qr-customizer', 'data-disabled': disabled ? 'true' : 'false' },
+      {
+        'data-testid': 'qr-customizer',
+        'data-disabled': disabled ? 'true' : 'false',
+        'data-logo': logoObjectUrl ?? '',
+      },
       createElement(
         'button',
         {
@@ -145,6 +150,7 @@ const MOCK_LINK = {
   original_url: 'https://example.com/page',
   short_url: 'https://s.example.com/r/tok1234',
   qr_code_url: '',
+  label: null,
   status: 'active' as const,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
@@ -168,6 +174,7 @@ function makeLinkEntryStub(overrides = {}) {
     queryError: null,
     updateUrl: Object.assign(vi.fn(), { isPending: false, error: null }),
     updateExpiry: Object.assign(vi.fn(), { isPending: false, error: null }),
+    updateLabel: Object.assign(vi.fn(), { isPending: false, error: null }),
     markDeleted: Object.assign(vi.fn(), { isPending: false, error: null }),
     ...overrides,
   }
@@ -199,6 +206,10 @@ beforeEach(() => {
     makeCustomizationStub() as ReturnType<typeof useCustomization>,
   )
   nudgeMock.mockReturnValue(false)
+})
+
+afterEach(() => {
+  vi.unstubAllGlobals()
 })
 
 import { LinkDetail } from './LinkDetail'
@@ -289,5 +300,54 @@ describe('LinkDetail — QR customization edit (bead qr_code_generator-yfx)', ()
       expect(save).toHaveBeenCalled()
     })
     expect(toastMock.success).not.toHaveBeenCalled()
+  })
+
+  it('re-sends the existing logo when only colours are edited (regression: silent logo data-loss, bead qr_code_generator-yfx)', async () => {
+    // jsdom lacks object-URL APIs used when re-hydrating the logo into a File.
+    URL.createObjectURL = vi.fn(() => 'blob:mock-logo')
+    URL.revokeObjectURL = vi.fn()
+
+    // The stored customization HAS a logo, exposed via logo_url.
+    const logoBlob = new Blob(['logo-bytes'], { type: 'image/png' })
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: () => Promise.resolve(logoBlob),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const save = vi.fn().mockResolvedValue({
+      token: 'tok1234',
+      image_key: 'qr/tok1234/composite.png',
+      logo_key: 'qr/tok1234/logo.png',
+      updated_at: '2026-06-01T11:00:00Z',
+    })
+    useCustomizationMock.mockReturnValue(
+      makeCustomizationStub({
+        customization: { ...MOCK_CUSTOMIZATION, logo_url: '/api/qr/tok1234/logo' },
+        save,
+      }) as ReturnType<typeof useCustomization>,
+    )
+
+    render(createElement(LinkDetail))
+    fireEvent.click(screen.getByRole('button', { name: /編輯外觀/ }))
+
+    // The existing logo is fetched from logo_url and seeded into the editor.
+    await waitFor(() =>
+      expect(fetchMock).toHaveBeenCalledWith('/api/qr/tok1234/logo'),
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('qr-customizer').getAttribute('data-logo')).toBe(
+        'blob:mock-logo',
+      ),
+    )
+
+    // Change ONLY the colours/dot-style — leave the logo untouched.
+    fireEvent.click(screen.getByTestId('change-style-btn'))
+    fireEvent.click(screen.getByRole('button', { name: /儲存外觀/ }))
+
+    // The kept logo must be re-sent so the backend does not clear logo_key.
+    await waitFor(() => expect(save).toHaveBeenCalled())
+    const savedArgs = save.mock.calls[0][0] as { logo?: unknown }
+    expect(savedArgs.logo).toBeInstanceOf(File)
   })
 })
