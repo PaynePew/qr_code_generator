@@ -9,6 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile
 from fastapi.responses import RedirectResponse, Response
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.orm import Session
 
 from . import (
@@ -145,18 +146,17 @@ def _link_response(link: Link, base_url: str, state: LinkState) -> dict:
     }
 
 
-def _record_scan_background(
+def _persist_scan(
     db: Session,
     token: str,
     status_code: int,
     ip: str | None,
     ua: str | None,
 ) -> None:
-    """Derive coarse geo + device attributes and persist the Scan.
+    """Derive coarse geo + device attributes and persist the Scan into ``db``.
 
-    Intended as a BackgroundTasks callback — runs after the 302/410 is sent,
-    keeping the raw IP and UA off the redirect hot path and out of any
-    persisted column (ADR 0016: privacy-by-construction).
+    Raw IP and UA are derived-and-discarded here (ADR 0016: privacy-by-construction)
+    and never reach a persisted column.
     """
     country, subdivision = scan_derivation.derive_geo(ip)
     device_class = scan_derivation.derive_device_class(ua)
@@ -169,6 +169,30 @@ def _record_scan_background(
         subdivision=subdivision,
         device_class=device_class,
     )
+
+
+def _record_scan_background(
+    bind: Engine | Connection,
+    token: str,
+    status_code: int,
+    ip: str | None,
+    ua: str | None,
+) -> None:
+    """BackgroundTasks callback for the 302 scan write — opens its OWN Session.
+
+    By the time this runs, FastAPI (>=0.106) has finalised the get_db
+    yield-dependency and closed the request session, so the write must not borrow
+    it (bead uq9). The session is built from the request session's ``bind`` (the
+    prod engine, or a test's live connection) and always closed.
+    ``join_transaction_mode="create_savepoint"`` is a no-op against a plain engine
+    bind, and keeps the write inside the outer transaction when a test binds to a
+    live connection — so the background write stays visible and is rolled back.
+    """
+    db = Session(bind=bind, join_transaction_mode="create_savepoint")
+    try:
+        _persist_scan(db, token, status_code, ip, ua)
+    finally:
+        db.close()
 
 
 class CreateRequest(BaseModel):
@@ -415,14 +439,16 @@ def redirect(
 
     if not state.is_redirectable:
         # Write the 410 scan synchronously before raising — BackgroundTasks are not
-        # executed when an exception escapes the handler, so we must commit before
-        # raising. The 410 path is not latency-critical (it is an error response).
-        _record_scan_background(db, token, 410, ip, ua)
+        # executed when an exception escapes the handler. This runs in-handler while
+        # the request session is still open, so it writes through `db` directly.
+        _persist_scan(db, token, 410, ip, ua)
         raise link_gone(token)
 
     # Hand the 302 scan write to BackgroundTasks so the redirect returns before
     # db.commit (ADR 0016 §2: off the hot path; at-most-once is acceptable for analytics).
-    background_tasks.add_task(_record_scan_background, db, token, 302, ip, ua)
+    # The task opens its OWN session from the request session's bind — by the time it
+    # runs, FastAPI (>=0.106) has already closed this request's get_db session (bead uq9).
+    background_tasks.add_task(_record_scan_background, db.get_bind(), token, 302, ip, ua)
     return RedirectResponse(url=snapshot.original_url, status_code=302)
 
 

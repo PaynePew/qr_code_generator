@@ -81,6 +81,23 @@ class TestScanLogging:
         scan = db_session.query(Scan).filter(Scan.token == token).first()
         assert scan.device_class == "bot"
 
+    def test_scan_write_uses_its_own_session_not_the_request_session(self, db_session):
+        """bead uq9: the 302 scan write runs as a BackgroundTask AFTER FastAPI
+        (>=0.106) closes the request's get_db session, so _record_scan_background
+        takes only the request's *bind* and opens its OWN session — it never
+        borrows (a possibly-closed) request session.
+        """
+        from backend.router import _record_scan_background
+
+        # Hand the background task only the bind (as the redirect handler does) —
+        # no live session. It must still persist the scan via its own session.
+        _record_scan_background(db_session.get_bind(), "BGSESS1", 302, None, "Googlebot/2.1")
+
+        rows = db_session.query(Scan).filter(Scan.token == "BGSESS1").all()
+        assert len(rows) == 1
+        assert rows[0].status_code == 302
+        assert rows[0].device_class == "bot"
+
 
 class TestAnalyticsEndpoint:
     def test_analytics_returns_404_for_unknown_token(self, auth_client):
