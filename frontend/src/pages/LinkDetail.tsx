@@ -414,7 +414,7 @@ function EditUrlForm({
               <input
                 type="text"
                 className={[
-                  'rounded-md border px-3 py-2 text-sm outline-none',
+                  'rounded-md border px-3 py-2 text-sm outline-hidden',
                   'focus:ring-2 focus:ring-primary/50',
                   inlineError
                     ? 'border-destructive focus:ring-destructive/50'
@@ -534,7 +534,7 @@ function EditExpiresAtForm({
             setPreset('custom')
           }}
           disabled={isPending}
-          className="rounded-md border border-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50 bg-background disabled:opacity-50"
+          className="rounded-md border border-input px-3 py-2 text-sm outline-hidden focus:ring-2 focus:ring-primary/50 bg-background disabled:opacity-50"
         />
       )}
 
@@ -612,7 +612,7 @@ function EditLabelForm({
             type="text"
             maxLength={100}
             placeholder="輸入標籤（選填）"
-            className="rounded-md border border-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50"
+            className="rounded-md border border-input px-3 py-2 text-sm outline-hidden focus:ring-2 focus:ring-primary/50"
             value={field.state.value}
             onChange={(e) => field.handleChange(e.target.value)}
             onBlur={field.handleBlur}

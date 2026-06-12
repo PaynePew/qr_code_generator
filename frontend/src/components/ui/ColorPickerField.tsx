@@ -71,7 +71,7 @@ export function ColorPickerField({ label, value, onChange, disabled }: Props) {
   }
 
   const inputClass =
-    'rounded-md border border-input px-2 py-1 text-sm font-mono outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50'
+    'rounded-md border border-input px-2 py-1 text-sm font-mono outline-hidden focus:ring-2 focus:ring-primary/50 disabled:opacity-50'
 
   return (
     <div ref={containerRef} className="flex flex-col gap-1 relative">
@@ -79,7 +79,7 @@ export function ColorPickerField({ label, value, onChange, disabled }: Props) {
       <div className="flex items-center gap-2 flex-wrap">
         <button
           type="button"
-          className="w-8 h-8 rounded border border-input flex-shrink-0 disabled:opacity-50"
+          className="w-8 h-8 rounded border border-input shrink-0 disabled:opacity-50"
           style={{ backgroundColor: value }}
           onClick={() => setOpen((v) => !v)}
           aria-label={`開啟${label}色彩選擇器`}

@@ -133,7 +133,7 @@ export function QRCustomizer({
             onStyleChange({ ...style, dotType: e.target.value as DotType })
           }
           disabled={disabled}
-          className="rounded-md border border-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50 bg-background disabled:opacity-50"
+          className="rounded-md border border-input px-3 py-2 text-sm outline-hidden focus:ring-2 focus:ring-primary/50 bg-background disabled:opacity-50"
         >
           {DOT_TYPES.map(({ value, label }) => (
             <option key={value} value={value}>
@@ -165,7 +165,7 @@ export function QRCustomizer({
             onStyleChange({ ...style, ecl: e.target.value as ECL })
           }
           disabled={disabled || eclLocked}
-          className="rounded-md border border-input px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-primary/50 bg-background disabled:opacity-50"
+          className="rounded-md border border-input px-3 py-2 text-sm outline-hidden focus:ring-2 focus:ring-primary/50 bg-background disabled:opacity-50"
           title={
             eclLocked
               ? '插入 Logo 時為確保掃描穩定性，錯誤修正等級必須為 H。'

@@ -70,7 +70,7 @@ export function DownloadSplitButton({
       {open && (
         <div
           role="listbox"
-          className="absolute top-full left-0 z-10 mt-1 min-w-[7rem] rounded-md border border-input bg-background shadow-md"
+          className="absolute top-full left-0 z-10 mt-1 min-w-28 rounded-md border border-input bg-background shadow-md"
         >
           {otherFormats.map(f => (
             <button

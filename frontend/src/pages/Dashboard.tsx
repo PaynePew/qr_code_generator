@@ -46,7 +46,7 @@ function LinkCard({ item }: { item: LinkListItem }) {
 
   return (
     <div
-      className="rounded-lg border bg-card p-4 shadow-sm flex gap-3 cursor-pointer hover:border-primary/40 hover:shadow-md transition-all"
+      className="rounded-lg border bg-card p-4 shadow-xs flex gap-3 cursor-pointer hover:border-primary/40 hover:shadow-md transition-all"
       onClick={handleCardClick}
       role="button"
       tabIndex={0}
@@ -67,7 +67,7 @@ function LinkCard({ item }: { item: LinkListItem }) {
         width={56}
         height={56}
         loading="lazy"
-        className="rounded border border-border bg-white object-contain flex-shrink-0 self-start"
+        className="rounded border border-border bg-white object-contain shrink-0 self-start"
       />
 
       <div className="flex flex-col gap-2 flex-1 min-w-0">
