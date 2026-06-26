@@ -10,11 +10,24 @@ def _client_host(request: Request) -> str | None:
 def extract_client_ip(request: Request, trusted_proxies: int) -> str | None:
     """Return the best-guess client IP for *request*.
 
-    trusted_proxies=0  → ignore X-Forwarded-For, use request.client.host.
-    trusted_proxies=N  → take XFF entry at position -(N+1) from the right
-                         (one hop left of the N trusted proxy entries at the end).
-                         Falls back to request.client.host when XFF is absent or
-                         has fewer than N+1 entries.
+    trusted_proxies=0  → ignore X-Forwarded-For, use request.client.host (the
+                         socket peer).
+    trusted_proxies=N  → trust the rightmost N entries of X-Forwarded-For, set by
+                         our own N reverse proxies. Per the de-facto XFF contract
+                         each proxy appends the address it RECEIVED THE REQUEST
+                         FROM (its upstream) — NOT its own address — so after N
+                         trusted hops the real client is the Nth entry from the
+                         right (``entries[-N]``). Anything further LEFT is
+                         client-supplied and untrusted (XFF-spoofing guard). Falls
+                         back to request.client.host when XFF is absent or has
+                         fewer than N entries.
+
+    Example — this deployment runs one edge Caddy in front of the app (N=1):
+    Caddy sets XFF to the real client IP (a single entry), so the client is
+    ``entries[-1]``. (The earlier ``-(N+1)`` form assumed each proxy appended its
+    OWN address, which Caddy does not — that off-by-one made every request resolve
+    to the private Caddy container IP: NULL geo + one shared rate-limit bucket.)
+
     Returns None only when neither XFF nor request.client yields an address.
     """
     if trusted_proxies == 0:
@@ -25,7 +38,7 @@ def extract_client_ip(request: Request, trusted_proxies: int) -> str | None:
         return _client_host(request)
 
     entries = [e.strip() for e in xff.split(",") if e.strip()]
-    if len(entries) >= trusted_proxies + 1:
-        return entries[-(trusted_proxies + 1)]
+    if len(entries) >= trusted_proxies:
+        return entries[-trusted_proxies]
 
     return _client_host(request)

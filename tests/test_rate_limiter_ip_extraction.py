@@ -1,13 +1,13 @@
 """Unit tests for backend.rate_limiter.ip_extraction.extract_client_ip.
 
-AC coverage:
-  - trusted_proxies=0 ignores XFF, returns request.client.host
-  - trusted_proxies=1 with a single-untrusted-entry XFF (N+1=2 CSV entries) returns that entry
-  - trusted_proxies=1 with multi-hop XFF returns the rightmost-untrusted boundary
-  - trusted_proxies=N greater than XFF entry count falls back to request.client.host
-  - Missing XFF returns request.client.host
-  - Missing both (no XFF, no client) returns None
-  - Whitespace around XFF values is stripped
+Model (de-facto X-Forwarded-For): each trusted reverse proxy appends the address
+it received the request FROM (its upstream), NOT its own address. So with N
+trusted proxies the real client is the Nth entry from the right (``entries[-N]``);
+entries further left are client-supplied and untrusted. trusted_proxies=0 ignores
+XFF entirely and uses the socket peer.
+
+This deployment runs one edge Caddy (N=1), which sets XFF to the real client IP
+(a single entry) → client = entries[-1].
 """
 
 from unittest.mock import MagicMock
@@ -46,34 +46,39 @@ class TestTrustedProxiesZero:
 
 
 class TestTrustedProxiesOne:
-    def test_single_untrusted_entry_xff_returns_that_entry(self):
-        # XFF has N+1 = 2 entries: "client_ip, proxy_ip".
-        # After skipping the 1 trusted proxy entry, one untrusted entry remains.
-        req = _req(xff="1.2.3.4, 10.0.0.1", client_host="10.0.0.1")
+    def test_single_entry_xff_is_the_client(self):
+        # One edge Caddy sets XFF to the real client IP (one entry).
+        req = _req(xff="1.2.3.4", client_host="10.0.0.1")
         assert extract_client_ip(req, 1) == "1.2.3.4"
 
-    def test_multi_hop_xff_returns_rightmost_untrusted_boundary(self):
-        # XFF = "client, untrusted_proxy, trusted_proxy_entry"
-        # With N=1, skip the last entry (added by the 1 trusted hop) and return the one before it.
-        req = _req(xff="1.2.3.4, 10.0.0.1, 192.168.1.1", client_host="192.168.1.1")
+    def test_spoofed_left_entry_ignored_rightmost_is_trusted(self):
+        # Client spoofs "9.9.9.9"; Caddy appends the real peer "1.2.3.4". With
+        # N=1 the trusted client is the rightmost entry; the spoof is ignored.
+        req = _req(xff="9.9.9.9, 1.2.3.4", client_host="10.0.0.1")
+        assert extract_client_ip(req, 1) == "1.2.3.4"
+
+    def test_no_xff_falls_back_to_client_host(self):
+        req = _req(xff=None, client_host="10.0.0.1")
         assert extract_client_ip(req, 1) == "10.0.0.1"
 
-    def test_xff_shorter_than_n_plus_1_falls_back_to_client_host(self):
-        # XFF has only 1 entry but we need >= N+1 = 2 entries: fall back.
-        req = _req(xff="1.2.3.4", client_host="10.0.0.1")
-        assert extract_client_ip(req, 1) == "10.0.0.1"
+
+class TestTrustedProxiesTwo:
+    def test_two_hops_client_is_second_from_right(self):
+        # client -> outer LB (appends client) -> Caddy (appends LB) -> app
+        req = _req(xff="1.2.3.4, 172.16.0.9", client_host="10.0.0.1")
+        assert extract_client_ip(req, 2) == "1.2.3.4"
+
+    def test_spoof_with_two_hops_ignored(self):
+        # Client spoofs "9.9.9.9"; after 2 hops XFF = [spoof, client, LB].
+        req = _req(xff="9.9.9.9, 1.2.3.4, 172.16.0.9", client_host="10.0.0.1")
+        assert extract_client_ip(req, 2) == "1.2.3.4"
 
 
-class TestTrustedProxiesGreaterThanXffLength:
-    def test_n_greater_than_xff_length_falls_back(self):
-        # N=3, XFF has 2 entries: N > len(entries) → fall back.
+class TestXffShorterThanN:
+    def test_fewer_entries_than_n_falls_back(self):
+        # N=3 but XFF has 2 entries → cannot identify the trusted client → fall back.
         req = _req(xff="1.2.3.4, 10.0.0.1", client_host="192.168.0.1")
         assert extract_client_ip(req, 3) == "192.168.0.1"
-
-    def test_n_equals_xff_length_falls_back(self):
-        # N=2, XFF has 2 entries: len == N (< N+1) → fall back.
-        req = _req(xff="1.2.3.4, 10.0.0.1", client_host="192.168.0.1")
-        assert extract_client_ip(req, 2) == "192.168.0.1"
 
 
 class TestMissingXff:
@@ -93,19 +98,15 @@ class TestMissingBoth:
 
 
 class TestWhitespaceAndCasing:
-    def test_whitespace_around_xff_entries_stripped(self):
-        req = _req(xff="  1.2.3.4  ,  10.0.0.1  ", client_host="10.0.0.1")
+    def test_whitespace_around_single_entry_stripped(self):
+        req = _req(xff="  1.2.3.4  ", client_host="10.0.0.1")
         assert extract_client_ip(req, 1) == "1.2.3.4"
 
-    def test_extra_whitespace_in_single_entry_stripped(self):
-        req = _req(xff="  203.0.113.99  ,  10.10.10.1  ", client_host="10.10.10.1")
-        assert extract_client_ip(req, 1) == "203.0.113.99"
-
     def test_mixed_whitespace_multi_hop(self):
-        req = _req(xff=" a , b , c ", client_host="c")
-        assert extract_client_ip(req, 1) == "b"
+        req = _req(xff=" a , b ", client_host="c")
+        assert extract_client_ip(req, 2) == "a"
 
     def test_ipv6_casing_preserved(self):
         # IPv6 addresses may use upper or lower hex; the value is returned as-is.
-        req = _req(xff="::1, 2001:DB8::1", client_host="2001:DB8::1")
-        assert extract_client_ip(req, 1) == "::1"
+        req = _req(xff="2001:DB8::1", client_host="10.0.0.1")
+        assert extract_client_ip(req, 1) == "2001:DB8::1"

@@ -27,13 +27,13 @@ def _login_as(client, user):
 
 
 def _create(client, *, ip="1.2.3.4"):
-    # Send "ip, testproxy" so that with TRUSTED_PROXIES=1 the IP resolves to
-    # `ip` (entries[-2]); the create cap keys by user, so the IP is incidental
-    # here and only matters for the per-IP auth-endpoint tests.
+    # One trusted proxy (TRUSTED_PROXIES=1) → the client is the rightmost XFF
+    # entry, so send just `ip`. The create cap keys by user, so the IP is
+    # incidental here and only matters for the per-IP auth-endpoint tests.
     return client.post(
         "/api/qr/create",
         json={"url": f"https://example.com/p{next(_counter)}"},
-        headers={"x-forwarded-for": f"{ip}, testproxy"},
+        headers={"x-forwarded-for": ip},
     )
 
 
