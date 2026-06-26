@@ -428,9 +428,15 @@ def get_customization(
     if customization is None:
         raise not_found("No customization found for this token")
 
+    # The logo is owner-private (ADR 0011) and must NEVER be handed out as a
+    # storage URL: InMemory's ``http://fake-storage`` is unreachable, and a
+    # cross-origin CloudFront URL is CORS-blocked when the editor re-hydrates
+    # the kept logo with ``fetch(logo_url)``. Point at the same-origin owner
+    # proxy below instead, so the session cookie authorizes the read and the
+    # logo stays behind the owner check (Route A for the logo).
     logo_url: str | None = None
     if customization.logo_key:
-        logo_url = storage.url_for(customization.logo_key)
+        logo_url = f"/api/qr/{token}/logo"
 
     return {
         "token": token,
@@ -439,6 +445,69 @@ def get_customization(
         "logo_url": logo_url,
         "updated_at": iso_utc(customization.updated_at),
     }
+
+
+# Logo content-type is inferred from the stored key's extension, which PUT sets
+# to the sniffed image subtype (``logo_content_type.split("/")[-1]``): png /
+# jpeg / gif / webp. ``storage.get`` returns bytes only (no content-type), so
+# this map is how the proxy labels the response.
+_LOGO_EXT_CONTENT_TYPE = {
+    "png": "image/png",
+    "jpeg": "image/jpeg",
+    "jpg": "image/jpeg",
+    "gif": "image/gif",
+    "webp": "image/webp",
+}
+
+
+def _logo_content_type(key: str) -> str:
+    ext = key.rsplit(".", 1)[-1].lower() if "." in key else ""
+    return _LOGO_EXT_CONTENT_TYPE.get(ext, "application/octet-stream")
+
+
+@router.get("/qr/{token}/logo")
+def qr_logo(
+    token: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    storage: StorageGateway = Depends(_get_storage),
+):
+    """Stream the owner's uploaded logo (owner-only proxy; ADR 0011, Route A).
+
+    The logo is owner-private: unlike the immutable composite (ADR 0017, which
+    302s to CloudFront when a CDN is configured) the logo is ALWAYS proxied by
+    the backend so it never escapes the owner check via a public CDN URL. The
+    backend reads the private object with its own creds (``storage.get``) — the
+    browser cannot. The editor re-hydrates the kept logo with a same-origin
+    ``fetch(/api/qr/{token}/logo)`` whose session cookie authorizes this read
+    (works in dev via the Vite proxy and in prod same-origin); a cross-origin
+    storage URL would be unreachable (InMemory) or CORS-blocked (CloudFront).
+
+    Owner-only: a non-owner, a token with no customization, and a token whose
+    customization has no logo all return 404 (owner-404 rule, ADR 0009/0012) so
+    a stranger cannot probe whether a logo exists. ``Cache-Control: no-cache``
+    because re-customizing the Link can replace the logo.
+    """
+    link = link_repository.get_link(db, token)
+    authorize_owner(link, current_user)
+
+    customization = customization_repository.get_customization(db, link.id)
+    if customization is None or not customization.logo_key:
+        raise not_found("No logo found for this token")
+
+    logo_bytes = storage.get(customization.logo_key)
+    if logo_bytes is None:
+        # Key recorded but the object is gone (dev restart / S3 lifecycle reap).
+        raise not_found("No logo found for this token")
+
+    return Response(
+        content=logo_bytes,
+        media_type=_logo_content_type(customization.logo_key),
+        # nosniff: this proxies user-uploaded bytes from the app's own origin, so
+        # stop the browser MIME-sniffing the response into anything executable
+        # if an owner is ever lured to open the URL as a top-level navigation.
+        headers={"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"},
+    )
 
 
 @redirect_router.get("/r/{token}")

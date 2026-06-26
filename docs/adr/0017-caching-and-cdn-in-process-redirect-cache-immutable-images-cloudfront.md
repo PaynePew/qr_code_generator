@@ -127,6 +127,32 @@ publicly fetchable. The endpoint now also answers **HEAD** (not only GET) so og:
 link-preview crawlers get the real 200/302 instead of the SPA mount's reserved-prefix 404.
 Decision 3's `storage.public_url(key)` is implemented as `public_url_for`.
 
+### 3b. Logo is always proxied (2026-06-26) — owner-private, never via the CDN
+
+§3a fixes the **composite** (a public, immutable asset — 302 to the CDN when one exists). The
+**logo** is different: ADR 0011 makes the raw logo **owner-only**, so it must never leak via a
+public CloudFront URL. Yet `GET /api/qr/{token}/customization` returned `logo_url =
+storage.url_for(logo_key)` — the CloudFront URL in prod, the unreachable `http://fake-storage/...`
+in local dev. The editor re-hydrates the kept logo with `fetch(logo_url)` (to keep the composite
+canvas same-origin and untainted on `toBlob`), so that URL broke the 編輯外觀 logo preview in **both**
+environments: local dev fetched an unreachable host; prod fetched a **cross-origin** CloudFront URL
+that a `fetch().blob()` cannot read without CORS headers OAC image delivery does not send. (Same
+symptom — no logo in the editor — two distinct causes.)
+
+New owner-only proxy `GET /api/qr/{token}/logo`:
+
+- **Always proxies the bytes** (`authorize_owner` → `storage.get(logo_key)` → `Response`), even
+  when a CDN is configured — it is the deliberate exception to §3a's 302, because the logo must
+  stay behind the owner check (ADR 0011) and never be served from a public CDN path.
+- `get_customization` now returns the **relative** `logo_url = /api/qr/{token}/logo`, so the
+  editor's `fetch` is **same-origin** (Vite proxy in dev, shared origin in prod) → the httpOnly
+  session cookie flows → the owner check passes. The composite still uses the §3a public path.
+- Owner-404 throughout (non-owner / no customization / no logo / object reaped all → 404), so a
+  stranger cannot probe whether a logo exists. `Cache-Control: no-cache` (the logo is mutable) +
+  `X-Content-Type-Options: nosniff` (it proxies user-uploaded bytes from the app's own origin).
+- Content-type is inferred from the server-minted key extension (`png|jpeg|gif|webp`); the key is
+  never attacker-controlled, so the proxy cannot be coerced into serving an executable type.
+
 ## Consequences
 
 - **What this actually buys at current scale:** for the redirect, a correctness-clean

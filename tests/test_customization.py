@@ -528,6 +528,36 @@ class TestGetCustomization:
         finally:
             app.dependency_overrides.pop(_get_storage, None)
 
+    def test_logo_url_is_relative_owner_proxy_path(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
+        """logo_url must be the same-origin owner-proxy path, NOT a storage URL.
+
+        The editor re-hydrates the kept logo with a `fetch(logo_url)`. A storage
+        URL (InMemory's unreachable ``http://fake-storage`` or a cross-origin
+        CloudFront URL) is either unreachable or CORS-blocked, so the logo never
+        loads in the 編輯外觀 preview. The relative ``/api/qr/{token}/logo`` path
+        is same-origin → the session cookie authorizes an owner-only proxy read,
+        and the logo stays private (never served via a public CDN; ADR 0011).
+        """
+        from backend.main import app
+        from backend.router import _get_storage
+
+        gw = InMemoryGateway()
+        app.dependency_overrides[_get_storage] = lambda: gw
+
+        try:
+            _insert_owned_link(db_session, "get0008", owner.id)
+            _put_customization(auth_client, "get0008", logo_bytes=_minimal_png())
+            resp = auth_client.get("/api/qr/get0008/customization")
+            logo_url = resp.json()["logo_url"]
+            assert logo_url == "/api/qr/get0008/logo"
+            # Must not leak a storage URL (fake-storage / S3 / CloudFront).
+            assert "fake-storage" not in logo_url
+            assert "://" not in logo_url
+        finally:
+            app.dependency_overrides.pop(_get_storage, None)
+
     def test_logo_url_none_when_no_logo(
         self, auth_client: TestClient, db_session: Session, owner
     ):
@@ -587,4 +617,137 @@ class TestQrImageWithCustomization:
 
     def test_unknown_token_still_returns_404(self, client: TestClient):
         resp = client.get("/api/qr/unknown99/image")
+        assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# GET /api/qr/{token}/logo — owner-only logo proxy (ADR 0011, Route A for logo)
+# ---------------------------------------------------------------------------
+
+
+class TestQrLogo:
+    """The logo is owner-private and must never be served via a public CDN URL.
+
+    Unlike the immutable composite (ADR 0017 — 302 to CloudFront when a CDN is
+    configured), the logo is ALWAYS proxied by the backend so it stays behind the
+    owner check. The editor re-hydrates the kept logo with a same-origin
+    ``fetch(/api/qr/{token}/logo)`` whose session cookie authorizes the read.
+    """
+
+    def test_owner_gets_logo_bytes_200(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
+        from backend.main import app
+        from backend.router import _get_storage
+
+        gw = InMemoryGateway()
+        app.dependency_overrides[_get_storage] = lambda: gw
+
+        try:
+            _insert_owned_link(db_session, "logo001", owner.id)
+            logo = _minimal_png()
+            put = _put_customization(auth_client, "logo001", logo_bytes=logo)
+            logo_key = put.json()["logo_key"]
+
+            resp = auth_client.get("/api/qr/logo001/logo")
+            assert resp.status_code == 200
+            assert resp.headers["content-type"] == "image/png"
+            # Owner-private user content: must not be MIME-sniffed or cached.
+            assert resp.headers["x-content-type-options"] == "nosniff"
+            assert resp.headers["cache-control"] == "no-cache"
+            # Proxies exactly the stored bytes (EXIF-stripped on PUT).
+            assert resp.content == gw.get(logo_key)
+        finally:
+            app.dependency_overrides.pop(_get_storage, None)
+
+    def test_jpeg_logo_served_with_jpeg_content_type(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
+        """Content-type is inferred from the stored key's extension (set on PUT)."""
+        from backend.main import app
+        from backend.router import _get_storage
+
+        gw = InMemoryGateway()
+        app.dependency_overrides[_get_storage] = lambda: gw
+
+        try:
+            _insert_owned_link(db_session, "logo002", owner.id)
+            _put_customization(auth_client, "logo002", logo_bytes=_minimal_jpeg())
+            resp = auth_client.get("/api/qr/logo002/logo")
+            assert resp.status_code == 200
+            assert resp.headers["content-type"] == "image/jpeg"
+        finally:
+            app.dependency_overrides.pop(_get_storage, None)
+
+    def test_404_when_customization_has_no_logo(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
+        _insert_owned_link(db_session, "logo003", owner.id)
+        _put_customization(auth_client, "logo003")  # no logo
+        resp = auth_client.get("/api/qr/logo003/logo")
+        assert resp.status_code == 404
+
+    def test_404_when_no_customization(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
+        _insert_owned_link(db_session, "logo004", owner.id)
+        resp = auth_client.get("/api/qr/logo004/logo")
+        assert resp.status_code == 404
+
+    def test_404_when_logo_object_missing(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
+        """Key recorded but object gone (dev restart / lifecycle reap) → graceful 404."""
+        from backend.main import app
+        from backend.router import _get_storage
+
+        gw = InMemoryGateway()
+        app.dependency_overrides[_get_storage] = lambda: gw
+
+        try:
+            _insert_owned_link(db_session, "logo005", owner.id)
+            put = _put_customization(auth_client, "logo005", logo_bytes=_minimal_png())
+            gw.delete(put.json()["logo_key"])  # object vanishes; row keeps the key
+            resp = auth_client.get("/api/qr/logo005/logo")
+            assert resp.status_code == 404
+        finally:
+            app.dependency_overrides.pop(_get_storage, None)
+
+    def test_unauthenticated_returns_401(self, client: TestClient, db_session: Session):
+        _insert_link(db_session, "logo006")
+        resp = client.get("/api/qr/logo006/logo")
+        assert resp.status_code == 401
+
+    def test_unknown_token_returns_404(self, auth_client: TestClient):
+        resp = auth_client.get("/api/qr/unknown99/logo")
+        assert resp.status_code == 404
+
+    def test_non_owner_returns_404(self, db_session: Session):
+        """A logged-in non-owner must not be able to read the logo (owner-404)."""
+        from backend.auth import get_current_user
+        from backend.main import app
+        from backend.router import _get_storage, get_db
+
+        gw = InMemoryGateway()
+        owner = make_user(db_session)
+        other = make_user(db_session)
+        _insert_owned_link(db_session, "logo007", owner.id)
+
+        def override_get_db():
+            yield db_session
+
+        app.dependency_overrides[get_db] = override_get_db
+        app.dependency_overrides[_get_storage] = lambda: gw
+
+        # Store a logo as the owner.
+        app.dependency_overrides[get_current_user] = lambda: owner
+        with TestClient(app, raise_server_exceptions=True) as c:
+            _put_customization(c, "logo007", logo_bytes=_minimal_png())
+
+        # A different signed-in user must get 404, not the bytes.
+        app.dependency_overrides[get_current_user] = lambda: other
+        with TestClient(app, raise_server_exceptions=True) as c:
+            resp = c.get("/api/qr/logo007/logo")
+
+        app.dependency_overrides.clear()
         assert resp.status_code == 404
