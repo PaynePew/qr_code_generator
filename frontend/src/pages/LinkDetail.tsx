@@ -669,6 +669,7 @@ export function LinkDetail() {
   const [editLogoError, setEditLogoError] = useState<string | null>(null)
   const editLogoObjectUrlRef = useRef<string | null>(null)
   const editRendererRef = useRef<QRRenderer | null>(null)
+  const editPreviewRef = useRef<HTMLDivElement>(null)
 
   const entry = useLinkEntry(token ?? '')
   const customizationHook = useCustomization(token ?? '')
@@ -734,6 +735,35 @@ export function LinkDetail() {
     }
   }, [])
 
+  // Live preview for the edit panel: create + attach the renderer when the panel
+  // opens (the link's real Short URL is known here), destroy it when it closes.
+  useEffect(() => {
+    if (!isEditingCustomization || !shortUrl || !editPreviewRef.current) return
+    const renderer = createRenderer(
+      styleToRendererOptions(editStyle, shortUrl, editLogoObjectUrl, editLogoScale),
+    )
+    renderer.attachTo(editPreviewRef.current)
+    editRendererRef.current = renderer
+    return () => {
+      renderer.destroy()
+      editRendererRef.current = null
+    }
+    // Style / logo changes flow through the sync effect below, not a re-create.
+  }, [isEditingCustomization, shortUrl])
+
+  // Keep the edit preview in sync with the controls (what you see is what saves).
+  useEffect(() => {
+    if (!isEditingCustomization) return
+    editRendererRef.current?.update(
+      styleToRendererOptions(
+        editStyle,
+        shortUrl ?? undefined,
+        editLogoObjectUrl,
+        editLogoScale,
+      ),
+    )
+  }, [editStyle, editLogoObjectUrl, editLogoScale, isEditingCustomization, shortUrl])
+
   const handleEditLogoAccepted = useCallback((file: File) => {
     revokeEditLogo()
     const objectUrl = URL.createObjectURL(file)
@@ -758,12 +788,10 @@ export function LinkDetail() {
   async function saveCustomizationEdit() {
     if (!shortUrl) return
 
-    // Build a hidden renderer to export the composite blob
-    const renderer = createRenderer(
-      styleToRendererOptions(editStyle, shortUrl, editLogoObjectUrl, editLogoScale),
-    )
-    editRendererRef.current?.destroy()
-    editRendererRef.current = renderer
+    // Reuse the live preview renderer (created when the panel opened): the saved
+    // composite is exactly what the preview shows.
+    const renderer = editRendererRef.current
+    if (!renderer) return
 
     try {
       const blob = await renderer.toBlob('png')
@@ -1042,6 +1070,14 @@ export function LinkDetail() {
                 <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                   編輯外觀
                 </h3>
+                <div className="flex flex-col items-center gap-1">
+                  <div className="inline-flex rounded-lg border bg-white p-4">
+                    <div ref={editPreviewRef} />
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    即時預覽 — 按「儲存外觀」後生效
+                  </p>
+                </div>
                 <QRCustomizer
                   style={editStyle}
                   onStyleChange={setEditStyle}

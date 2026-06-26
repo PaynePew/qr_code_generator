@@ -16,7 +16,6 @@ import { useCreateEntry } from '@/state/linkEntry'
 import {
   getDefault,
   setDefault,
-  getStyle,
   setStyle as persistSetStyle,
   DEFAULT_STYLE,
   QR_RENDER_SIZE,
@@ -72,10 +71,36 @@ export function Generator() {
     toDatetimeLocalValue(new Date(computeExpiresAt(new Date(), '+30d')!)),
   )
 
+  // The QR preview encodes the real Short URL once minted, else a placeholder so
+  // the owner can preview colours / dots / logo live BEFORE generating.
+  const previewData = shortUrl ?? `${window.location.origin}/r/preview`
+
+  // Create the live preview renderer once; it survives the page lifetime.
   useEffect(() => {
-    if (!shortUrl || !rendererRef.current || !qrContainerRef.current) return
-    rendererRef.current.attachTo(qrContainerRef.current)
-  }, [shortUrl])
+    rendererRef.current = createRenderer(
+      styleToRendererOptions(style, previewData, logoObjectUrl, logoScale),
+    )
+    return () => {
+      rendererRef.current?.destroy()
+      rendererRef.current = null
+    }
+  }, [])
+
+  // Keep the preview in sync with the style / logo / encoded URL (reactive — no
+  // scattered manual update() calls).
+  useEffect(() => {
+    rendererRef.current?.update(
+      styleToRendererOptions(style, previewData, logoObjectUrl, logoScale),
+    )
+  }, [style, previewData, logoObjectUrl, logoScale])
+
+  // The jitter animation (key=jitterKey) re-mounts the preview container on each
+  // generate, detaching the canvas — (re)attach it on mount and after generate.
+  useEffect(() => {
+    if (rendererRef.current && qrContainerRef.current) {
+      rendererRef.current.attachTo(qrContainerRef.current)
+    }
+  }, [jitterKey])
 
   // Scroll-based preview shrink (mobile only)
   const [previewScrollY, setPreviewScrollY] = useState(0)
@@ -108,7 +133,7 @@ export function Generator() {
 
   useEffect(() => {
     return () => {
-      rendererRef.current?.destroy()
+      // Renderer teardown lives in the create-on-mount effect's cleanup.
       revokeLogo()
     }
   }, [])
@@ -120,11 +145,7 @@ export function Generator() {
     } else {
       setDefault(newStyle)
     }
-    updateRenderer(newStyle, logoObjectUrl, logoScale)
-  }
-
-  function updateRenderer(s: QRStyle, logoUrl: string | null, scale: number) {
-    rendererRef.current?.update(styleToRendererOptions(s, undefined, logoUrl, scale))
+    // The live preview re-renders reactively from `style` (see the sync effect).
   }
 
   function handleLogoRemove() {
@@ -132,27 +153,20 @@ export function Generator() {
     setLogoObjectUrl(null)
     setLogoFile(null)
     setLogoError(null)
-    updateRenderer(style, null, logoScale)
   }
 
   function handleLogoScaleChange(scale: number) {
     setLogoScale(scale)
-    updateRenderer(style, logoObjectUrl, scale)
   }
 
-  const handleLogoAccepted = useCallback(
-    (file: File) => {
-      revokeLogo()
-      const objectUrl = URL.createObjectURL(file)
-      logoObjectUrlRef.current = objectUrl
-      setLogoObjectUrl(objectUrl)
-      setLogoFile(file)
-      setLogoError(null)
-      updateRenderer(style, objectUrl, logoScale)
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [style, logoScale],
-  )
+  const handleLogoAccepted = useCallback((file: File) => {
+    revokeLogo()
+    const objectUrl = URL.createObjectURL(file)
+    logoObjectUrlRef.current = objectUrl
+    setLogoObjectUrl(objectUrl)
+    setLogoFile(file)
+    setLogoError(null)
+  }, [])
 
   const mutation = useCreateEntry()
 
@@ -174,10 +188,11 @@ export function Generator() {
 
       persistSetStyle(data.token, style)
 
-      rendererRef.current?.destroy()
-      rendererRef.current = null
-
-      rendererRef.current = createRenderer(styleToRendererOptions(style, qrUrl, logoObjectUrl, logoScale))
+      // Repoint the live preview renderer at the real Short URL (it already
+      // exists from the page's create-on-mount effect).
+      rendererRef.current?.update(
+        styleToRendererOptions(style, qrUrl, logoObjectUrl, logoScale),
+      )
 
       toast.success('QR 碼已產生！', getToastOptions('success'))
 
@@ -187,7 +202,8 @@ export function Generator() {
 
       if (isCustomized(style, logoFile)) {
         try {
-          const blob = await rendererRef.current.toBlob('png')
+          const blob = await rendererRef.current?.toBlob('png')
+          if (!blob) return
           await saveCustomization({
             token: data.token,
             style: {
@@ -214,13 +230,6 @@ export function Generator() {
       toast.error('網路錯誤，請稍後再試。', getToastOptions('error'))
     }
   }
-
-  useEffect(() => {
-    if (currentToken) {
-      const saved = getStyle(currentToken)
-      setStyle(saved)
-    }
-  }, [currentToken])
 
   const form = useForm({
     defaultValues: { url: '', label: '' },
@@ -258,8 +267,8 @@ export function Generator() {
   function handleReset() {
     setShortUrl(null)
     setCurrentToken(null)
-    rendererRef.current?.destroy()
-    rendererRef.current = null
+    // The live preview reverts to a default-styled placeholder reactively
+    // (shortUrl→null, style→default); the renderer instance is kept.
     const defaultStyle = getDefault()
     setStyle(defaultStyle)
     setExpiresPreset('never')
@@ -286,23 +295,24 @@ export function Generator() {
               )}
               style={{ minHeight: `${previewHeight}px` }}
             >
-              {shortUrl ? (
-                <motion.div
-                  key={jitterKey}
-                  animate={
-                    prefersReducedMotion
-                      ? { opacity: 1 }
-                      : { x: [-3, 3, -3, 3, 0], opacity: 1 }
-                  }
-                  initial={{ opacity: prefersReducedMotion ? 0.5 : 1 }}
-                  transition={{ duration: 0.35 }}
-                >
-                  <div ref={qrContainerRef} />
-                </motion.div>
-              ) : (
-                <p className="text-sm text-muted-foreground">QR 碼預覽將顯示在這裡</p>
-              )}
+              <motion.div
+                key={jitterKey}
+                animate={
+                  !prefersReducedMotion && shortUrl
+                    ? { x: [-3, 3, -3, 3, 0], opacity: 1 }
+                    : { opacity: 1 }
+                }
+                initial={{ opacity: prefersReducedMotion ? 0.5 : 1 }}
+                transition={{ duration: 0.35 }}
+              >
+                <div ref={qrContainerRef} />
+              </motion.div>
             </div>
+            {!shortUrl && (
+              <p className="mt-2 text-center text-xs text-muted-foreground">
+                即時外觀預覽 — 按「產生 QR 碼」後會編碼正式短網址
+              </p>
+            )}
           </div>
         </div>
 

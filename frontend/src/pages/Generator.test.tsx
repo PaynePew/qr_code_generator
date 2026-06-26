@@ -55,6 +55,7 @@ vi.mock('@/state/styleStore', () => ({
     dotType: 'square',
     ecl: 'M',
   },
+  QR_RENDER_SIZE: 320,
 }))
 
 vi.mock('@/state/downloadFormatStore', () => ({

@@ -75,7 +75,7 @@ The **Destination URL** (`links.original_url`) is the owner-supplied address a T
 
 ## Customization
 
-**Customization** is a Link owner's chosen visual treatment of its QR — foreground / background colour, dot style, and an optional embedded **logo**. It is purely cosmetic: a customized QR still encodes the same **Short URL**, so editing the destination never invalidates it. Render resolution and error-correction level are system-managed, not customization choices — resolution is fixed (on-screen size is a layout concern) and error correction is raised automatically when a logo is present so the code still scans.
+**Customization** is a Link owner's chosen visual treatment of its QR — foreground / background colour, dot style, **error-correction level**, and an optional embedded **logo**. It is purely cosmetic: a customized QR still encodes the same **Short URL**, so editing the destination never invalidates it. Render resolution is system-managed (fixed; on-screen size is a layout concern). The **error-correction level (ECL)** is a customization choice — the owner picks L / M / Q / H (default M), trading code density for scan robustness — with one rule the system enforces: adding a **logo** locks ECL to H so the code still scans where the logo covers it.
 
 A **vanilla QR** is the plain black-and-white image the backend can regenerate for any Link on demand; a **customized QR** is the owner's styled variant, persisted so it survives across sessions and devices. Customization belongs to the owner and persists per-user, not per-browser. The rendered customized QR is public (it is the code people scan and share); the customization's inputs — the style recipe and any uploaded logo — are owner-private.
 

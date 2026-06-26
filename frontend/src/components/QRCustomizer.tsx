@@ -178,6 +178,9 @@ export function QRCustomizer({
             </option>
           ))}
         </select>
+        <p className="text-xs text-muted-foreground">
+          容錯能力：等級越高，QR 碼即使被遮擋或磨損仍可掃描，但圖案會更密集。插入 Logo 時會自動鎖為最高（H）。
+        </p>
       </div>
 
       {/* Logo */}

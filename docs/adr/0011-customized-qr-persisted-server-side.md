@@ -51,3 +51,14 @@ than growing its own styling pipeline.
   low-frequency, the backend is a normal VPS). Proxying lets the backend validate the
   bytes (real image, size cap, EXIF strip) and write the DB row atomically. Recorded so
   the appealing-but-unjustified presigned option is not re-proposed later.
+
+## Amendment (2026-06-26): error-correction level is a user-facing knob
+
+Decision 2 above recorded that the error-correction level was "derived (raised
+when a logo is present), so neither [resolution nor ECL] is a user-facing knob."
+The shipped customization UI instead exposes **ECL as an owner choice** (L / M / Q
+/ H, default M), auto-locked to H only when a logo is present. That divergence was
+reviewed and the UI behaviour was kept: ECL is a legitimate customization choice —
+it trades QR density for scan robustness, which a user printing onto varied media
+may reasonably want to control. CONTEXT.md §Customization is updated to match.
+**Render resolution remains system-managed** (still not a user knob).
