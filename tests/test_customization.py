@@ -551,19 +551,21 @@ class TestQrImageWithCustomization:
         assert resp.status_code == 200
         assert resp.content[:4] == b"\x89PNG"
 
-    def test_customized_link_redirects_to_storage_url(
+    def test_customized_link_serves_stored_composite(
         self, auth_client: TestClient, db_session: Session, owner
     ):
-        """After PUT, GET /image must redirect (302) to the storage URL, not stream bytes.
+        """After PUT, GET /image streams the stored composite bytes (Route A, no CDN).
 
-        ADR 0017: the image endpoint is a mutable pointer; it returns a 302 to
-        storage.url_for(image_key) so the browser / CDN fetches the immutable object.
+        ADR 0017 / Route A: with no CDN configured the image endpoint proxies the
+        composite the backend read from storage (200), rather than redirecting the
+        browser to a private/unreachable storage URL. (When a CDN IS configured it
+        302s to the CDN instead — see test_cdn_image.py::TestQrImageCdnRedirect.)
         """
         from backend.main import app
         from backend.router import _get_storage
 
         fake_composite = _minimal_png()
-        gw = InMemoryGateway(base_url="http://fake-storage")
+        gw = InMemoryGateway()
         app.dependency_overrides[_get_storage] = lambda: gw
 
         try:
@@ -575,8 +577,11 @@ class TestQrImageWithCustomization:
             image_key = put_resp.json()["image_key"]
 
             img_resp = auth_client.get("/api/qr/img0002/image", follow_redirects=False)
-            assert img_resp.status_code == 302
-            assert img_resp.headers["location"] == f"http://fake-storage/{image_key}"
+            assert img_resp.status_code == 200
+            assert img_resp.headers["content-type"] == "image/png"
+            # The endpoint serves exactly what was persisted (EXIF-stripped on PUT).
+            assert img_resp.content == gw.get(image_key)
+            assert img_resp.content[:4] == b"\x89PNG"
         finally:
             app.dependency_overrides.pop(_get_storage, None)
 

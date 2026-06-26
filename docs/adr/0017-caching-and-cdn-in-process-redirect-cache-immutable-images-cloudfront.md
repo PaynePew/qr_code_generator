@@ -99,6 +99,34 @@ re-customization, so the two must be cached differently:
 CloudFront + OAC + the bucket-policy change is a HITL AWS-provisioning task (like the S3
 bucket, bead `6c0`); the app side is the `public_url` / 302 integration.
 
+### 3a. Route A refinement (2026-06-26) — proxy bytes when no CDN is configured
+
+Decision 3 as originally written had the image endpoint **always** 302 to
+`storage.url_for(image_key)`. In practice that URL is browser-fetchable **only when a CDN
+fronts the (private) bucket**: with `CDN_BASE_URL` unset, `url_for` returns the raw S3 URL,
+and because the bucket is private (OAC-only, per this ADR) a browser GET 403s → broken
+image. The same endpoint also 302'd to an unreachable `http://fake-storage/...` in local
+dev (InMemoryGateway), so customized QR images never displayed locally. (This was a live
+prod incident on 2026-06-26: `CDN_BASE_URL` was unset, every customized QR 403'd.)
+
+The endpoint now decides via `storage.public_url_for(key)`, which returns a URL **only when
+one is genuinely public** (a CDN is configured), else `None`:
+
+- **CDN configured** → 302 to the CloudFront URL (unchanged — the Decision-3 edge-cache path).
+- **No CDN** (local dev, or prod before/without CloudFront) → the backend reads the composite
+  (`storage.get`, with its own S3 creds — which the browser lacks) and **streams the bytes
+  inline** (`Cache-Control: no-cache`). Symmetric to ADR 0011's already-accepted "uploads
+  proxy through the validating backend"; per-image bandwidth is negligible (tiny,
+  low-frequency assets — the same rationale that rejected presigned uploads).
+- **Composite key recorded but object missing** → graceful fallback to vanilla regeneration
+  so the Link keeps a scannable QR.
+
+The 302 path keeps the CDN edge-cache benefit where it exists; the proxy path removes the
+load-bearing (and, when the bucket is private, false) assumption that the storage URL is
+publicly fetchable. The endpoint now also answers **HEAD** (not only GET) so og:image /
+link-preview crawlers get the real 200/302 instead of the SPA mount's reserved-prefix 404.
+Decision 3's `storage.public_url(key)` is implemented as `public_url_for`.
+
 ## Consequences
 
 - **What this actually buys at current scale:** for the redirect, a correctness-clean

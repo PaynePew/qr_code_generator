@@ -245,33 +245,56 @@ def create_qr(
     }
 
 
-@router.get("/qr/{token}/image")
+@router.api_route("/qr/{token}/image", methods=["GET", "HEAD"])
 def qr_image(
     token: str,
     db: Session = Depends(get_db),
     storage: StorageGateway = Depends(_get_storage),
 ):
-    """Return the QR image for a Link (ADR 0011 / ADR 0017).
+    """Return the QR image for a Link (ADR 0011 / ADR 0017, Route A).
 
-    Customized Link → 302 redirect to ``storage.url_for(image_key)`` (the
-    CloudFront URL when CDN_BASE_URL is set, else the S3 URL).  The 302 itself
-    carries ``Cache-Control: no-cache`` because this endpoint is a mutable
-    pointer — re-customizing the Link changes its target.
+    Customized Link:
+    - CDN configured (``public_url_for`` returns a URL) → 302 redirect to the
+      CloudFront URL so the edge serves the immutable composite. The 302 carries
+      ``Cache-Control: no-cache`` because this endpoint is a mutable pointer —
+      re-customizing the Link changes its target.
+    - No CDN (dev InMemory, or prod S3 without a CDN) → the backend reads the
+      composite from storage and streams the bytes itself. The browser cannot
+      reach a private bucket / the in-process store, but the backend can (it
+      holds the S3 creds), so proxying is the only path that works without a
+      public object URL. This is the fix for the broken-image bug where the old
+      code redirected the browser straight to a 403/unreachable storage URL.
+    - Composite key recorded but the object is gone (reaped by lifecycle, or
+      lost on a dev restart) → fall through to vanilla regeneration so the Link
+      still has a scannable QR.
 
     Vanilla Link → regenerate the plain PNG inline with ``Cache-Control: no-cache``
     (a vanilla Link can later become customized, so we must not let clients cache
     the vanilla response indefinitely).
+
+    HEAD is accepted (not only GET) so og:image / link-preview crawlers that
+    probe with HEAD get the real 200/302 instead of falling through to the SPA
+    mount's reserved-prefix 404 (main.py SPAStaticFiles).
     """
     link = link_repository.get_link(db, token)
     customization = customization_repository.get_customization(db, link.id)
 
     if customization is not None:
-        redirect_url = storage.url_for(customization.image_key)
-        return RedirectResponse(
-            url=redirect_url,
-            status_code=302,
-            headers={"Cache-Control": "no-cache"},
-        )
+        public_url = storage.public_url_for(customization.image_key)
+        if public_url is not None:
+            return RedirectResponse(
+                url=public_url,
+                status_code=302,
+                headers={"Cache-Control": "no-cache"},
+            )
+        composite = storage.get(customization.image_key)
+        if composite is not None:
+            return Response(
+                content=composite,
+                media_type="image/png",
+                headers={"Cache-Control": "no-cache"},
+            )
+        # Composite key recorded but object absent → graceful vanilla fallback.
 
     # Fallback: regenerate vanilla PNG inline (uncustomized Links).
     cfg = _config()

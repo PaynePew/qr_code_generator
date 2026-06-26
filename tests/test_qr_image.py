@@ -75,3 +75,14 @@ class TestQrImageEndpoint:
     def test_unknown_token_returns_404(self, client):
         resp = client.get("/api/qr/unknown/image")
         assert resp.status_code == 404
+
+    def test_head_request_is_accepted(self, client, db_session):
+        """HEAD must hit the endpoint (200), not 405/404.
+
+        The route registers GET+HEAD so og:image / link-preview crawlers that
+        probe with HEAD don't fall through to the SPA mount's reserved-prefix
+        404 in production (main.py SPAStaticFiles).
+        """
+        _insert_link(db_session, "headok1")
+        resp = client.head("/api/qr/headok1/image")
+        assert resp.status_code == 200

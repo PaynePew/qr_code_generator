@@ -56,6 +56,20 @@ class StorageGateway(Protocol):
         """
         ...
 
+    def public_url_for(self, key: str) -> str | None:
+        """Return a browser-fetchable PUBLIC URL for ``key``, or None if none exists.
+
+        Distinct from ``url_for``: this returns a URL only when an
+        unauthenticated browser can genuinely fetch it — i.e. a CDN
+        (CloudFront) fronts the object. When it returns None the object lives in
+        a private bucket or an in-process store the browser cannot reach, so the
+        caller must proxy the bytes itself (the backend holds the credentials;
+        the browser does not). This is the hook that lets the image endpoint
+        redirect to the CDN when one is configured and stream bytes otherwise
+        (ADR 0017, Route A).
+        """
+        ...
+
     def delete(self, key: str) -> None:
         """Delete the object at ``key``.  No-ops if the key does not exist."""
         ...
@@ -92,6 +106,11 @@ class InMemoryGateway:
 
     def url_for(self, key: str) -> str:
         return f"{self._base_url}/{key}"
+
+    def public_url_for(self, key: str) -> str | None:
+        # In-process store — never reachable by a browser, so the image endpoint
+        # must proxy the bytes (returned by ``get``) rather than redirect here.
+        return None
 
     def delete(self, key: str) -> None:
         self._store.pop(key, None)
@@ -178,6 +197,21 @@ class S3Gateway:
         if self._endpoint_url:
             return f"{self._endpoint_url.rstrip('/')}/{self._bucket}/{key}"
         return f"https://{self._bucket}.s3.{self._region}.amazonaws.com/{key}"
+
+    def public_url_for(self, key: str) -> str | None:
+        """Public URL only when a CDN fronts the (private) bucket; else None.
+
+        The bucket is private (CloudFront OAC-only in prod), so the raw S3 URL
+        is NOT publicly fetchable — handing it to a browser 403s. Only the
+        CloudFront URL is public. With no CDN we return None so the image
+        endpoint proxies the bytes: the backend reads the private object with
+        its IAM creds (``get``), which the browser cannot do. A bare
+        ``endpoint_url`` (MinIO/LocalStack) is likewise treated as non-public —
+        proxying works there too without assuming a public-read bucket policy.
+        """
+        if self._cdn_base_url:
+            return f"{self._cdn_base_url}/{key}"
+        return None
 
     def delete(self, key: str) -> None:
         self._client().delete_object(Bucket=self._bucket, Key=key)

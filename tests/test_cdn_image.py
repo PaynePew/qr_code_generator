@@ -2,7 +2,9 @@
 
 Coverage:
 - S3Gateway.url_for: returns CDN URL when cdn_base_url set, S3 URL otherwise
-- Image endpoint: customized Link returns 302 to url_for target with no-cache
+- public_url_for: CDN URL when a CDN fronts the bucket, else None (Route A)
+- Image endpoint (Route A): customized Link 302s to the CDN URL when a CDN is
+  configured, else the backend proxies the composite bytes (200); no-cache on both
 - Image endpoint: vanilla Link returns inline PNG with no-cache
 - Immutable Cache-Control forwarded by S3Gateway.put
 - InMemoryGateway: cache_control kwarg accepted (no-op, no regression)
@@ -123,6 +125,35 @@ class TestS3GatewayUrlFor:
 
 
 # ---------------------------------------------------------------------------
+# public_url_for — browser-fetchable URL only when a CDN fronts the bucket
+# ---------------------------------------------------------------------------
+
+
+class TestPublicUrlFor:
+    """public_url_for returns a public URL ONLY when a CDN fronts the bucket (Route A)."""
+
+    def test_s3_returns_cdn_url_when_cdn_set(self):
+        gw = S3Gateway(
+            bucket="b", region="ap-northeast-1", cdn_base_url="https://cdn.example.com"
+        )
+        assert gw.public_url_for("qr/t/c.png") == "https://cdn.example.com/qr/t/c.png"
+
+    def test_s3_returns_none_when_no_cdn(self):
+        gw = S3Gateway(bucket="b", region="ap-northeast-1")
+        assert gw.public_url_for("qr/t/c.png") is None
+
+    def test_s3_returns_none_with_endpoint_but_no_cdn(self):
+        gw = S3Gateway(
+            bucket="b", region="ap-northeast-1", endpoint_url="http://localhost:9000"
+        )
+        assert gw.public_url_for("qr/t/c.png") is None
+
+    def test_inmemory_always_returns_none(self):
+        gw = InMemoryGateway(base_url="http://fake-storage")
+        assert gw.public_url_for("qr/t/c.png") is None
+
+
+# ---------------------------------------------------------------------------
 # IMMUTABLE_CACHE_CONTROL constant
 # ---------------------------------------------------------------------------
 
@@ -150,24 +181,29 @@ class TestInMemoryGatewayCacheControlKwarg:
 
 
 # ---------------------------------------------------------------------------
-# Image endpoint: customized Link returns 302 with no-cache
+# Image endpoint (Route A): customized Link 302s to the CDN URL when a CDN is set
 # ---------------------------------------------------------------------------
+
+_CDN_BASE = "https://cdn.example.com"
+
+
+def _cdn_gateway() -> S3Gateway:
+    # CDN-configured S3Gateway. The 302 path only calls public_url_for (no boto3),
+    # so this never touches real AWS.
+    return S3Gateway(bucket="b", region="ap-northeast-1", cdn_base_url=_CDN_BASE)
 
 
 class TestQrImageCdnRedirect:
     def test_customized_link_returns_302(
         self, auth_client: TestClient, db_session: Session, owner
     ):
-        """Customized Link: image endpoint must return 302, not 200."""
+        """Customized Link with a CDN configured: image endpoint returns 302."""
         from backend.main import app
         from backend.router import _get_storage
 
-        gw = InMemoryGateway(base_url="http://fake-storage")
-        app.dependency_overrides[_get_storage] = lambda: gw
-
+        app.dependency_overrides[_get_storage] = _cdn_gateway
         try:
             link = _insert_owned_link(db_session, "cdn0001", owner.id)
-            gw.put("qr/cdn0001/composite_abc.png", b"\x89PNG\r\n\x1a\n", "image/png")
             _attach_customization(db_session, link, "qr/cdn0001/composite_abc.png")
 
             resp = auth_client.get("/api/qr/cdn0001/image", follow_redirects=False)
@@ -175,25 +211,22 @@ class TestQrImageCdnRedirect:
         finally:
             app.dependency_overrides.pop(_get_storage, None)
 
-    def test_customized_link_302_location_is_url_for(
+    def test_customized_link_302_location_is_cdn_url(
         self, auth_client: TestClient, db_session: Session, owner
     ):
-        """The 302 Location must be storage.url_for(image_key)."""
+        """The 302 Location must be the CDN URL (public_url_for)."""
         from backend.main import app
         from backend.router import _get_storage
 
-        gw = InMemoryGateway(base_url="http://fake-cdn")
-        app.dependency_overrides[_get_storage] = lambda: gw
-
+        app.dependency_overrides[_get_storage] = _cdn_gateway
         try:
             link = _insert_owned_link(db_session, "cdn0002", owner.id)
             image_key = "qr/cdn0002/composite_xyz.png"
-            gw.put(image_key, b"\x89PNG\r\n\x1a\n", "image/png")
             _attach_customization(db_session, link, image_key)
 
             resp = auth_client.get("/api/qr/cdn0002/image", follow_redirects=False)
             assert resp.status_code == 302
-            assert resp.headers["location"] == f"http://fake-cdn/{image_key}"
+            assert resp.headers["location"] == f"{_CDN_BASE}/{image_key}"
         finally:
             app.dependency_overrides.pop(_get_storage, None)
 
@@ -204,13 +237,10 @@ class TestQrImageCdnRedirect:
         from backend.main import app
         from backend.router import _get_storage
 
-        gw = InMemoryGateway(base_url="http://fake-cdn")
-        app.dependency_overrides[_get_storage] = lambda: gw
-
+        app.dependency_overrides[_get_storage] = _cdn_gateway
         try:
             link = _insert_owned_link(db_session, "cdn0003", owner.id)
             image_key = "qr/cdn0003/composite_no_cache.png"
-            gw.put(image_key, b"\x89PNG\r\n\x1a\n", "image/png")
             _attach_customization(db_session, link, image_key)
 
             resp = auth_client.get("/api/qr/cdn0003/image", follow_redirects=False)
@@ -246,29 +276,56 @@ class TestQrImageVanillaNoCache:
 
 
 # ---------------------------------------------------------------------------
-# Regression: CDN_BASE_URL unset — image endpoint falls back to S3 URL redirect
+# Route A: CDN_BASE_URL unset — the backend proxies the composite bytes (200)
 # ---------------------------------------------------------------------------
 
 
-class TestQrImageFallbackS3:
-    def test_customized_link_302_location_is_s3_url_when_no_cdn(
+class TestQrImageProxyNoCdn:
+    def test_customized_link_proxies_bytes_200_when_no_cdn(
         self, auth_client: TestClient, db_session: Session, owner
     ):
-        """With no CDN configured, 302 Location must use the S3 URL (InMemoryGateway)."""
+        """With no CDN, the endpoint streams the stored composite (200), not a 302.
+
+        This is the fix for the broken-image bug: previously the endpoint 302'd
+        the browser to a private-S3 / unreachable URL (403). Now the backend
+        reads the bytes (which it CAN, holding the creds) and serves them.
+        """
         from backend.main import app
         from backend.router import _get_storage
 
-        gw = InMemoryGateway(base_url="http://s3-fallback")
+        gw = InMemoryGateway()
         app.dependency_overrides[_get_storage] = lambda: gw
-
         try:
             link = _insert_owned_link(db_session, "s3fb001", owner.id)
             image_key = "qr/s3fb001/composite_fallback.png"
-            gw.put(image_key, b"\x89PNG\r\n\x1a\n", "image/png")
+            composite = b"\x89PNG\r\n\x1a\n" + b"the-stored-composite"
+            gw.put(image_key, composite, "image/png")
             _attach_customization(db_session, link, image_key)
 
             resp = auth_client.get("/api/qr/s3fb001/image", follow_redirects=False)
-            assert resp.status_code == 302
-            assert resp.headers["location"] == f"http://s3-fallback/{image_key}"
+            assert resp.status_code == 200
+            assert resp.headers["content-type"] == "image/png"
+            assert resp.content == composite
+            assert resp.headers.get("cache-control") == "no-cache"
+        finally:
+            app.dependency_overrides.pop(_get_storage, None)
+
+    def test_missing_composite_falls_back_to_vanilla(
+        self, auth_client: TestClient, db_session: Session, owner
+    ):
+        """image_key recorded but the object is absent → graceful vanilla PNG (200)."""
+        from backend.main import app
+        from backend.router import _get_storage
+
+        gw = InMemoryGateway()
+        app.dependency_overrides[_get_storage] = lambda: gw
+        try:
+            link = _insert_owned_link(db_session, "miss001", owner.id)
+            # NOTE: no gw.put — the key is referenced but the object is missing.
+            _attach_customization(db_session, link, "qr/miss001/composite_gone.png")
+
+            resp = auth_client.get("/api/qr/miss001/image", follow_redirects=False)
+            assert resp.status_code == 200
+            assert resp.content[:4] == b"\x89PNG"
         finally:
             app.dependency_overrides.pop(_get_storage, None)
