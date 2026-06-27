@@ -2,10 +2,10 @@
 
 The top-level `README.md` references these image files. Drop the matching PNGs here:
 
-| File | What it should show |
+| File | What it shows |
 |---|---|
-| `generator.png` | The generator page: paste a URL, get a styled QR |
-| `dashboard.png` | The dashboard listing links with state and scan counts |
-| `link-detail.png` | A link's detail view with customization and scan analytics |
+| `generator.png` | The home page (generator): paste a URL, live‑preview the styling, get a short link + QR |
+| `dashboard.png` | The dashboard: every link you own, with its state (active / expired) and scan count |
+| `analytics.png` | A link's scan‑tracking chart: 30‑day trend, success rate, and geo / device breakdowns |
 
-Suggested width is around 1280px so the images stay sharp on GitHub without bloating the repo. Capture them from the live site at https://qrcode.paynepew.dev (the read-only demo account is enough for the dashboard and detail views).
+Captured from the live site at https://qrcode.paynepew.dev using the read-only demo account (the "以訪客身分試用" / Try as guest button). A desktop viewport (~1440px wide) gives the two-column generator layout; the analytics image is clipped to the chart region of a link that has scans.
