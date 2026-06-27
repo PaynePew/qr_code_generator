@@ -64,7 +64,7 @@ export function Header({ onToggleSidebar }: HeaderProps) {
       <LoginControl />
 
       <a
-        href="https://github.com/PaynePew/qr_code_generator"
+        href="https://github.com/PaynePew/bbqrcode-generator"
         target="_blank"
         rel="noopener noreferrer"
         aria-label="GitHub 儲存庫"

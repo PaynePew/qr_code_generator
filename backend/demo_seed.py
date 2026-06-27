@@ -55,7 +55,7 @@ def _seed_plan(now: datetime) -> list[_SeedLink]:
         ),
         # Active, expires in the future — still redirectable today.
         _SeedLink(
-            url="https://github.com/PaynePew/qr_code_generator",
+            url="https://github.com/PaynePew/bbqrcode-generator",
             expires_at=now + timedelta(days=30),
             deleted=False,
             scans_by_day_offset={1: 2, 3: 4, 5: 1},

@@ -12,7 +12,7 @@ branch_prefix: kanban-issue
 
 tracker:
   type: github
-  repo: PaynePew/qr_code_generator
+  repo: PaynePew/bbqrcode-generator
 
 defaults:
   model: claude-sonnet-4-6

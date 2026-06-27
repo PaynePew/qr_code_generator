@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-**bd (beads) is the source of truth.** GitHub Issues (`PaynePew/qr_code_generator`) is a **one-way mirror** (local→GitHub) — never run bare `bd github sync` (it pulls GitHub's stale state back and re-opens closed beads); publish with push-only (`bd github push <ids>` / `bd github sync --push-only --prefer-local` / `scripts/bd-publish-loop.ps1`). See `docs/agents/issue-tracker.md` and CLAUDE.md.
+**bd (beads) is the source of truth.** GitHub Issues (`PaynePew/bbqrcode-generator`) is a **one-way mirror** (local→GitHub) — never run bare `bd github sync` (it pulls GitHub's stale state back and re-opens closed beads); publish with push-only (`bd github push <ids>` / `bd github sync --push-only --prefer-local` / `scripts/bd-publish-loop.ps1`). See `docs/agents/issue-tracker.md` and CLAUDE.md.
 
 **Stage notes on beads (slice-workflow):** record progress on the bead with `bd comment <id> --actor <role> "..."`, using `--actor` to distinguish `slice-implementer` / `slice-reviewer` / `slice-merger`. Do NOT close an issue mid-slice — the merge stage closes it.
 

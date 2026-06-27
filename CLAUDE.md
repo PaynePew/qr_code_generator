@@ -4,7 +4,7 @@
 
 **Primary tracker is bd (beads)** — bd is the **source of truth**. See the "Beads Issue Tracker" section below and `docs/agents/issue-tracker.md`. All new issues, including those produced by the `to-issues` and `triage` skills, go into bd via the `bd` CLI.
 
-**GitHub Issues mirrors bd** (`PaynePew/qr_code_generator`) **one-way, local→GitHub only**. bd is the source of truth; GitHub is a read-only window for non-terminal stakeholders. ⚠️ **Do NOT run bare `bd github sync`** — it defaults to *bidirectional + `--prefer-newer`*, so GitHub's stale state gets pulled back and **re-opens locally-closed beads** (on 2026-06-03 it reverted 6 closed foundation slices + the ttb epic). Publish progress with push-only instead:
+**GitHub Issues mirrors bd** (`PaynePew/bbqrcode-generator`) **one-way, local→GitHub only**. bd is the source of truth; GitHub is a read-only window for non-terminal stakeholders. ⚠️ **Do NOT run bare `bd github sync`** — it defaults to *bidirectional + `--prefer-newer`*, so GitHub's stale state gets pulled back and **re-opens locally-closed beads** (on 2026-06-03 it reverted 6 closed foundation slices + the ttb epic). Publish progress with push-only instead:
 
 ```bash
 bd github push <ids>                         # curated: push specific beads (= sync --push-only --issues <ids>)
