@@ -4,6 +4,7 @@ import json
 import os
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, UploadFile
@@ -41,6 +42,7 @@ from .storage import (
     IMMUTABLE_CACHE_CONTROL,
     MAX_IMAGE_BYTES,
     InMemoryGateway,
+    LocalDiskGateway,
     S3Gateway,
     StorageGateway,
     sniff_image_content_type,
@@ -62,17 +64,23 @@ redirect_router = APIRouter()
 # ---------------------------------------------------------------------------
 
 # Module-level singleton for the real app.
-# Initialised to InMemoryGateway (safe default for tests / dev without S3).
-# main.py lifespan calls build_storage_gateway() at startup and replaces this
-# with an S3Gateway when AWS_S3_BUCKET + AWS_REGION are present (ADR 0011).
+# Initialised to InMemoryGateway (inert import-time default; no filesystem side
+# effects). main.py lifespan calls build_storage_gateway() at startup and replaces
+# this with the env-selected gateway (LocalDiskGateway for dev, S3Gateway for prod).
 _storage_gateway: StorageGateway = InMemoryGateway()
+
+# Default on-disk location for the dev gateway. Resolved relative to the backend
+# package (not the CWD) so a fresh clone works regardless of where uvicorn runs.
+# Gitignored; auto-created on first write. Override with LOCAL_STORAGE_DIR.
+_DEFAULT_LOCAL_STORAGE_DIR = Path(__file__).resolve().parent / "data" / "storage"
 
 
 def build_storage_gateway(env: dict[str, str | None]) -> StorageGateway:
     """Select and return the appropriate StorageGateway from the environment.
 
     Rules (ADR 0011 / ADR 0017):
-    - AWS_S3_BUCKET absent → InMemoryGateway (dev / test mode).
+    - AWS_S3_BUCKET absent → LocalDiskGateway (dev default: on-disk, survives
+      restarts, zero setup). Override the path with LOCAL_STORAGE_DIR.
     - AWS_S3_BUCKET present → S3Gateway; AWS_REGION is then required.
     - AWS_ENDPOINT_URL (optional) is forwarded to S3Gateway for MinIO/LocalStack.
     - CDN_BASE_URL (optional) enables CloudFront URL generation in url_for (ADR 0017).
@@ -81,7 +89,10 @@ def build_storage_gateway(env: dict[str, str | None]) -> StorageGateway:
     """
     bucket = env.get("AWS_S3_BUCKET", "").strip()
     if not bucket:
-        return InMemoryGateway()
+        storage_dir = env.get("LOCAL_STORAGE_DIR", "").strip() or str(
+            _DEFAULT_LOCAL_STORAGE_DIR
+        )
+        return LocalDiskGateway(storage_dir)
 
     region = env.get("AWS_REGION", "").strip()
     if not region:

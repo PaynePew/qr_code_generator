@@ -21,6 +21,10 @@ venv/
 # committed (ADR 0016, bd qr_code_generator-bii). The backend/data/ dir is kept.
 backend/data/*.mmdb
 
+# Local dev object storage (LocalDiskGateway): customized QR composites + logos,
+# written when no AWS_S3_BUCKET is set. Dev-only; prod uses S3. Never committed.
+backend/data/storage/
+
 # Editor / OS
 .DS_Store
 .vscode/

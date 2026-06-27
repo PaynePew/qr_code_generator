@@ -11,6 +11,7 @@ Pure-logic tests (no db_session / client fixture) touch no DB and stay instant.
 import os
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 
 import pytest
@@ -21,6 +22,12 @@ from sqlalchemy.orm import sessionmaker
 os.environ.setdefault("SECRET", "test-secret-value")
 os.environ.setdefault("BASE_URL", "http://testserver")
 os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
+# App startup (lifespan) builds the dev LocalDiskGateway when no AWS_S3_BUCKET is
+# set; point it at a throwaway temp dir so the test run never writes into the repo
+# (storage-touching tests override _get_storage with InMemoryGateway anyway).
+os.environ.setdefault(
+    "LOCAL_STORAGE_DIR", os.path.join(tempfile.gettempdir(), "qr-test-storage")
+)
 
 from backend.auth import get_current_user  # noqa: E402
 from backend.main import app  # noqa: E402
