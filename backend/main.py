@@ -13,17 +13,25 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from . import router as _router_module
-from .auth_router import auth_router
-from .errors import AppError, ErrorCode
-from .logging_config import configure_logging
-from .rate_limiter.middleware import RateLimitMiddleware
-from .router import build_storage_gateway, redirect_router, router
-from .storage import S3Gateway
+# Load .env BEFORE importing backend modules that read env vars at import time:
+# database.py builds the SQLAlchemy engine from DATABASE_URL on import, and the
+# session/auth layer reads SECRET. If load_dotenv() runs AFTER these imports (as
+# it used to), `uvicorn backend.main:app` from a shell that has not exported the
+# vars falls back to the password-less DB default ("postgresql://localhost/...")
+# and every DB-backed request 500s with "no password supplied". Prod is immune
+# (Docker injects env via env_file), so this only ever bit local dev.
+load_dotenv()
+
+from . import router as _router_module  # noqa: E402
+from .auth_router import auth_router  # noqa: E402
+from .errors import AppError, ErrorCode  # noqa: E402
+from .logging_config import configure_logging  # noqa: E402
+from .rate_limiter.middleware import RateLimitMiddleware  # noqa: E402
+from .router import build_storage_gateway, redirect_router, router  # noqa: E402
+from .storage import S3Gateway  # noqa: E402
 
 _logger = logging.getLogger(__name__)
 
-load_dotenv()
 configure_logging()
 
 

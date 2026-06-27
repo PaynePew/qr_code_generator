@@ -24,7 +24,7 @@ import {
 import { saveCustomization } from '@/api/qr'
 import { useMotionPreference } from '@/lib/motionPreference'
 import { getToastOptions } from '@/lib/toastOptions'
-import { nudgeIfDemoReadOnly } from '@/lib/demoNudge'
+import { nudgeIfDemoReadOnly, nudgeIfUnauthenticated } from '@/lib/demoNudge'
 import {
   getDownloadFormat,
   setDownloadFormat,
@@ -224,8 +224,10 @@ export function Generator() {
   }
 
   const onCreateError = (err: ApiError) => {
-    // A guest hitting the read-only demo guard gets a login nudge, not an error.
+    // A guest hitting the read-only demo guard, or an anonymous visitor who has
+    // not signed in yet (401), gets a friendly login nudge — never a raw error.
     if (nudgeIfDemoReadOnly(err)) return
+    if (nudgeIfUnauthenticated(err)) return
     if (err.isNetwork || err.status !== 422) {
       toast.error('網路錯誤，請稍後再試。', getToastOptions('error'))
     }

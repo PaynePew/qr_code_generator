@@ -6,7 +6,7 @@ vi.mock('sonner', () => ({
 
 import { toast } from 'sonner'
 import type { ApiError } from '@/api/client'
-import { nudgeIfDemoReadOnly } from './demoNudge'
+import { nudgeIfDemoReadOnly, nudgeIfUnauthenticated } from './demoNudge'
 
 function apiError(status: number, code: string): ApiError {
   return { status, code, detail: '', isNetwork: false }
@@ -33,6 +33,29 @@ describe('nudgeIfDemoReadOnly', () => {
 
   it('does nothing for an owner 404 (non-demo) so its own handling runs', () => {
     const handled = nudgeIfDemoReadOnly(apiError(404, '404'))
+
+    expect(handled).toBe(false)
+    expect(toast.info).not.toHaveBeenCalled()
+  })
+})
+
+describe('nudgeIfUnauthenticated', () => {
+  it('shows a sign-in/guest nudge and reports handled for a 401', () => {
+    const handled = nudgeIfUnauthenticated(apiError(401, 'UNAUTHENTICATED'))
+
+    expect(handled).toBe(true)
+    expect(toast.info).toHaveBeenCalledTimes(1)
+  })
+
+  it('does nothing for a network error (status 0) so its own handling runs', () => {
+    const handled = nudgeIfUnauthenticated({ status: 0, code: 'NETWORK_ERROR', detail: '', isNetwork: true })
+
+    expect(handled).toBe(false)
+    expect(toast.info).not.toHaveBeenCalled()
+  })
+
+  it('does nothing for a 422 validation error', () => {
+    const handled = nudgeIfUnauthenticated(apiError(422, '422'))
 
     expect(handled).toBe(false)
     expect(toast.info).not.toHaveBeenCalled()

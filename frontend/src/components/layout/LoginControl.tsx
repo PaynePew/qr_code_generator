@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useSyncExternalStore } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 import { LogOut } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -18,7 +18,14 @@ function useMinWidth(px: number): boolean {
       if (!hasMM()) return () => {}
       const mq = window.matchMedia(query)
       mq.addEventListener('change', onChange)
-      return () => mq.removeEventListener('change', onChange)
+      // Also re-read on resize: some environments change the viewport without
+      // firing a matchMedia `change` (e.g. devtools/CDP metric overrides), so
+      // the variant would otherwise stay stuck across the breakpoint.
+      window.addEventListener('resize', onChange)
+      return () => {
+        mq.removeEventListener('change', onChange)
+        window.removeEventListener('resize', onChange)
+      }
     },
     [query],
   )
@@ -51,22 +58,33 @@ export function LoginControl() {
 
   // Always offer a Google sign-in affordance when logged out; One Tap, when it
   // shows, is an additive overlay — so logout never strands the user with only
-  // "guest". Pick the variant by viewport (full official pill on desktop, a
-  // compact icon below `sm` so the header never overflows) and render via an
-  // effect since GIS's `renderButton` is imperative. Keyed on `ready` so a
-  // late-loading GIS script still paints instead of silently no-opping, and
-  // never into a display:none element (which rendered blank on mobile).
+  // "guest". Pick the variant by viewport: the full official pill on desktop, a
+  // compact icon below `sm` so the header never overflows.
+  //
+  // Paint GIS's (imperative) button from a REF CALLBACK rather than an effect:
+  // the callback fires every time the host node mounts, so it repaints when the
+  // logged-out branch re-mounts after a logout even though `ready`/`isDesktop`
+  // are unchanged. An effect keyed on those deps would NOT re-run on that
+  // re-mount, leaving the button unpainted — the post-logout "no Google button"
+  // bug. `ready` still gates the first paint so a late-loading script repaints
+  // once GIS is live (the callback identity changes when `ready` flips).
   const isDesktop = useMinWidth(640)
-  const desktopBtnRef = useRef<HTMLDivElement>(null)
-  const iconOverlayRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    if (!ready) return
-    const el = isDesktop ? desktopBtnRef.current : iconOverlayRef.current
-    if (!el) return
-    el.innerHTML = '' // clear any prior render before switching variant
-    if (isDesktop) renderFallbackButton(el)
-    else renderFallbackIconButton(el)
-  }, [ready, isDesktop, renderFallbackButton, renderFallbackIconButton])
+  const mountDesktopButton = useCallback(
+    (el: HTMLDivElement | null) => {
+      if (!el || !ready) return
+      el.innerHTML = '' // clear any prior render before (re)painting
+      renderFallbackButton(el)
+    },
+    [ready, renderFallbackButton],
+  )
+  const mountIconButton = useCallback(
+    (el: HTMLDivElement | null) => {
+      if (!el || !ready) return
+      el.innerHTML = ''
+      renderFallbackIconButton(el)
+    },
+    [ready, renderFallbackIconButton],
+  )
 
   function handleLogout() {
     logout().catch(() =>
@@ -117,7 +135,7 @@ export function LoginControl() {
         // instead of reusing this <div> — otherwise GIS's imperatively-injected
         // button (which React doesn't track) lingers as an orphan in the reused
         // node and bleeds into the other variant.
-        <div key="google-desktop" ref={desktopBtnRef} aria-label="使用 Google 登入" className="shrink-0" />
+        <div key="google-desktop" ref={mountDesktopButton} aria-label="使用 Google 登入" className="shrink-0" />
       ) : (
         // Mobile: our own crisp Google "G" in a bordered square matching the
         // sibling buttons, with the (blank-rendering but still clickable) GIS
@@ -128,7 +146,7 @@ export function LoginControl() {
         >
           <GoogleGMark className="h-4 w-4" />
           <div
-            ref={iconOverlayRef}
+            ref={mountIconButton}
             aria-label="使用 Google 登入"
             className="absolute inset-0 cursor-pointer opacity-0"
           />

@@ -69,6 +69,7 @@ vi.mock('@/lib/motionPreference', () => ({
 
 vi.mock('@/lib/demoNudge', () => ({
   nudgeIfDemoReadOnly: () => false,
+  nudgeIfUnauthenticated: () => false,
 }))
 
 vi.mock('sonner', () => ({
