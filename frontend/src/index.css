@@ -54,28 +54,34 @@
 }
 
 @layer base {
+  /*
+    "Honey Roast" — warm Thanksgiving roast-chicken palette (light only).
+    Cream background, warm-brown text, honey-amber primary. HSL triplets feed
+    hsl(var(--token)) in @theme above; tweak the hue/sat here to re-warm the
+    whole app without touching component code.
+  */
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
+    --background: 37 69% 95%;
+    --foreground: 24 33% 18%;
+    --border: 35 46% 83%;
+    --input: 35 46% 83%;
+    --ring: 28 63% 48%;
     --radius: 0.5rem;
-    --primary: 221.2 83.2% 53.3%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --sidebar: 220 14.3% 95.9%;
-    --sidebar-foreground: 220 8.9% 46.1%;
-    --sidebar-border: 214.3 31.8% 91.4%;
-    --sidebar-accent: 220 14.3% 90%;
-    --sidebar-accent-foreground: 222.2 47.4% 11.2%;
+    --primary: 28 63% 48%;
+    --primary-foreground: 34 100% 97%;
+    --secondary: 39 51% 91%;
+    --secondary-foreground: 24 33% 18%;
+    --muted: 39 51% 91%;
+    --muted-foreground: 30 23% 48%;
+    --accent: 39 51% 91%;
+    --accent-foreground: 24 33% 18%;
+    --destructive: 0 72% 48%;
+    --destructive-foreground: 34 100% 97%;
+    --sidebar: 37 58% 90%;
+    --sidebar-foreground: 30 23% 45%;
+    --sidebar-border: 35 46% 83%;
+    --sidebar-accent: 38 55% 83%;
+    --sidebar-accent-foreground: 24 33% 18%;
   }
 
   * {

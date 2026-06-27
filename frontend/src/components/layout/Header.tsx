@@ -2,6 +2,33 @@ import { Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { LoginControl } from './LoginControl'
 
+// Brand mark — a roast chicken (no icon library ships a whole roasted bird;
+// lucide/Tabler only have a drumstick). Fixed golden-brown fills so it reads as
+// "roast chicken" regardless of the surrounding theme.
+function ChickenMark({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 64 64" className={className} aria-hidden="true">
+      <ellipse cx="32" cy="50" rx="27" ry="6" fill="#E7D2AC" />
+      <ellipse cx="32" cy="48.4" rx="27" ry="6" fill="#F6ECD6" />
+      <g transform="rotate(-20 20.75 22.5)">
+        <rect x="17" y="13.5" width="7.5" height="17" rx="3.75" fill="#C57A2A" />
+        <circle cx="20.75" cy="13.5" r="3.8" fill="#F4E6CB" />
+      </g>
+      <g transform="rotate(20 43.25 22.5)">
+        <rect x="39" y="13.5" width="7.5" height="17" rx="3.75" fill="#C57A2A" />
+        <circle cx="43.25" cy="13.5" r="3.8" fill="#F4E6CB" />
+      </g>
+      <ellipse cx="32" cy="37" rx="21" ry="15.5" fill="#B5691E" />
+      <ellipse cx="32" cy="34" rx="19" ry="12" fill="#C67C28" />
+      <ellipse cx="25" cy="31" rx="8.5" ry="5.5" fill="#D89A45" />
+      <circle cx="39" cy="40" r="1.6" fill="#8E4E14" />
+      <circle cx="33" cy="43.5" r="1.6" fill="#8E4E14" />
+      <circle cx="44" cy="35" r="1.4" fill="#8E4E14" />
+      <circle cx="26.5" cy="41" r="1.3" fill="#8E4E14" />
+    </svg>
+  )
+}
+
 // lucide-react v1 removed brand icons (incl. `Github`); inline the GitHub mark.
 function GithubMark({ className }: { className?: string }) {
   return (
@@ -17,18 +44,21 @@ interface HeaderProps {
 
 export function Header({ onToggleSidebar }: HeaderProps) {
   return (
-    <header className="flex h-14 items-center border-b bg-background px-4 gap-3 shrink-0">
+    <header className="flex h-14 items-center border-b bg-background px-3 sm:px-4 gap-2 sm:gap-3 shrink-0">
       <Button
         variant="ghost"
         size="icon"
         onClick={onToggleSidebar}
         aria-label="切換側邊欄"
+        className="shrink-0"
       >
         <Menu className="h-5 w-5" />
       </Button>
 
-      <span className="flex-1 font-semibold text-base tracking-tight">
-        QR Code Generator
+      <ChickenMark className="h-7 w-7 shrink-0" />
+
+      <span className="flex-1 min-w-0 truncate font-semibold text-base tracking-tight">
+        <span className="text-primary">BBQ</span>Rcode Generator
       </span>
 
       <LoginControl />

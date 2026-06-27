@@ -43,7 +43,12 @@ export function useLinkEntry(token: string): DerivedEntry {
   const query = useQuery<GetLinkResponse, ApiError>({
     queryKey: linkKey(token),
     queryFn: () => getLink(token),
-    retry: (_count, error) => error.status !== 404,
+    // Only retry transient failures (network / 5xx), and cap it. A function
+    // `retry` retries as long as it returns true — the old `status !== 404`
+    // predicate retried 401/403 FOREVER (exponential backoff), so a logged-out
+    // or non-owner deep link hung on the loading state instead of surfacing the
+    // rejection. 4xx is terminal: resolve fast so the UI can show it.
+    retry: (count, error) => (error.isNetwork || error.status >= 500) && count < 2,
     enabled: !!token,
   })
 

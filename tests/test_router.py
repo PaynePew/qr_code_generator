@@ -371,16 +371,20 @@ class TestEnvVarRequirements:
 
 
 class TestStorageGatewaySelection:
-    """Gateway is env-driven at startup: InMemoryGateway when AWS_S3_BUCKET absent,
-    S3Gateway when AWS_S3_BUCKET + AWS_REGION are set (ADR 0011)."""
+    """Gateway is env-driven at startup: LocalDiskGateway when AWS_S3_BUCKET absent
+    (dev default), S3Gateway when AWS_S3_BUCKET + AWS_REGION are set (ADR 0011)."""
 
-    def test_build_storage_gateway_returns_in_memory_when_no_bucket(self):
+    def test_build_storage_gateway_returns_local_disk_when_no_bucket(self, tmp_path):
         from backend.router import build_storage_gateway
-        from backend.storage import InMemoryGateway
+        from backend.storage import LocalDiskGateway
 
-        env = {"SECRET": "x", "BASE_URL": "http://example.com"}
+        env = {
+            "SECRET": "x",
+            "BASE_URL": "http://example.com",
+            "LOCAL_STORAGE_DIR": str(tmp_path / "storage"),
+        }
         gw = build_storage_gateway(env)
-        assert isinstance(gw, InMemoryGateway)
+        assert isinstance(gw, LocalDiskGateway)
 
     def test_build_storage_gateway_returns_s3_when_bucket_and_region_set(self):
         from backend.router import build_storage_gateway

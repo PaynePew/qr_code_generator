@@ -291,6 +291,8 @@ export function Generator() {
               className={cn(
                 'flex items-center justify-center rounded-lg border bg-white overflow-hidden',
                 'transition-all duration-200',
+                // Desktop: comfortable breathing room around the centered QR.
+                'p-4 lg:p-8',
                 shortUrl ? 'border-border' : 'border-dashed border-muted-foreground/30',
               )}
               style={{ minHeight: `${previewHeight}px` }}

@@ -21,7 +21,9 @@ CDN integration (ADR 0017):
 
 from __future__ import annotations
 
+import os
 import struct
+from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 # Immutable cache header for composite QR objects (ADR 0017).
@@ -125,6 +127,79 @@ class InMemoryGateway:
     def list_keys(self) -> list[str]:
         """Test-helper: return all stored keys."""
         return list(self._store.keys())
+
+
+class LocalDiskGateway:
+    """On-disk storage gateway for local development — no S3/MinIO required.
+
+    The dev default (selected when ``AWS_S3_BUCKET`` is unset). Persists objects
+    under ``base_dir`` so customized composites + logos SURVIVE backend restarts,
+    unlike ``InMemoryGateway`` which loses them on every ``uvicorn --reload`` — the
+    cause of the "local customized image disappears / editor can't re-load the
+    logo" bug. A fresh ``git clone`` works with zero extra setup: the directory is
+    auto-created and gitignored; no AWS creds, no MinIO, no env beyond the default.
+
+    Like ``InMemoryGateway`` it is NON-PUBLIC: ``public_url_for`` returns None so
+    the image/logo endpoints proxy the bytes via ``get`` (the existing Route-A
+    path), which keeps owner-private logos behind the owner check. Dev-only — prod
+    uses ``S3Gateway`` + CloudFront.
+    """
+
+    def __init__(
+        self,
+        base_dir: str | os.PathLike[str],
+        base_url: str = "local://storage",
+    ) -> None:
+        self._base_dir = Path(base_dir)
+        self._base_url = base_url.rstrip("/")
+        self._base_dir.mkdir(parents=True, exist_ok=True)
+
+    def _path(self, key: str) -> Path:
+        """Resolve ``key`` under base_dir, refusing keys that escape the root.
+
+        Keys are app-generated (``qr/{token}/...``), but a path join is never
+        trusted blindly — a traversal key (``../``) is rejected outright.
+        """
+        base = self._base_dir.resolve()
+        target = (base / key).resolve()
+        if target != base and base not in target.parents:
+            raise ValueError(f"key escapes storage root: {key!r}")
+        return target
+
+    def put(
+        self,
+        key: str,
+        data: bytes,
+        content_type: str,  # accepted for protocol parity; type is re-derived on read
+        cache_control: str | None = None,  # no CDN locally, so unused
+    ) -> None:
+        path = self._path(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+
+    def url_for(self, key: str) -> str:
+        # Cosmetic only: the UI fetches /api/qr/{token}/image and /logo (proxied
+        # via `get`), never this value. Kept for protocol parity.
+        return f"{self._base_url}/{key}"
+
+    def public_url_for(self, key: str) -> str | None:
+        # On-disk store — not browser-reachable, so the endpoints proxy via `get`.
+        return None
+
+    def delete(self, key: str) -> None:
+        try:
+            self._path(key).unlink()
+        except FileNotFoundError:
+            pass
+
+    def exists(self, key: str) -> bool:
+        return self._path(key).is_file()
+
+    def get(self, key: str) -> bytes | None:
+        try:
+            return self._path(key).read_bytes()
+        except FileNotFoundError:
+            return None
 
 
 class S3Gateway:

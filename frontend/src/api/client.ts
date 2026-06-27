@@ -9,12 +9,20 @@ export interface ApiError {
 
 function normalizeError(err: unknown): ApiError {
   if (axios.isAxiosError(err)) {
-    const axiosErr = err as AxiosError<{ code?: string; detail?: string }>
+    // The backend wraps every error in the unified envelope (ADR 0012):
+    //   { "error": { "code", "message", "details" } }
+    // Read from `error.*`, not the top level — reading `data.code`/`data.detail`
+    // silently missed the envelope, so `code` fell back to the numeric status and
+    // code-based branching (e.g. the DEMO_READ_ONLY nudge) never matched.
+    const axiosErr = err as AxiosError<{
+      error?: { code?: string; message?: string; details?: unknown }
+    }>
     if (axiosErr.response) {
+      const body = axiosErr.response.data?.error
       return {
         status: axiosErr.response.status,
-        code: axiosErr.response.data?.code ?? String(axiosErr.response.status),
-        detail: axiosErr.response.data?.detail ?? axiosErr.message,
+        code: body?.code ?? String(axiosErr.response.status),
+        detail: body?.message ?? axiosErr.message,
         isNetwork: false,
       }
     }

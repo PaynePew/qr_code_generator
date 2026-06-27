@@ -17,7 +17,9 @@ export function useLinkList(
     queryKey: linkListKey(deleted),
     queryFn: () => listLinks(deleted),
     enabled,
-    retry: (_count, error) => error.status !== 401,
+    // Retry only transient failures (network / 5xx), capped — never spin on a
+    // terminal 4xx (a function `retry` loops as long as it returns true).
+    retry: (count, error) => (error.isNetwork || error.status >= 500) && count < 2,
   })
 }
 

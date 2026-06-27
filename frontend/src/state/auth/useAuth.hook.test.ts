@@ -252,12 +252,13 @@ describe('useAuth — logout mutation', () => {
     expect(disableAutoSelect).toHaveBeenCalledTimes(1)
   })
 
-  it('clears the whole React Query cache to prevent cross-user data leakage', async () => {
+  it('drops the previous user cached data (except auth) to prevent cross-user leakage', async () => {
     fetchSessionUserMock.mockResolvedValue(REAL_USER)
     endSessionMock.mockResolvedValue(undefined)
     getGoogleIdentityMock.mockReturnValue(null)
     const qc = makeQueryClient()
-    const clearSpy = vi.spyOn(qc, 'clear')
+    // Seed a previous user's dashboard list into the cache.
+    qc.setQueryData(['links', { deleted: false }], { items: [{ token: 'secret' }], next_cursor: null })
     const { result } = renderHook(() => useAuth(), { wrapper: makeWrapper(qc) })
 
     await waitFor(() => expect(result.current.isAuthenticated).toBe(true))
@@ -268,8 +269,9 @@ describe('useAuth — logout mutation', () => {
       await result.current.logout()
     })
 
-    // clear() is called during logout.
-    expect(clearSpy).toHaveBeenCalled()
+    // The signed-out user's links are removed; auth/me is set to null (not removed).
+    expect(qc.getQueryData(['links', { deleted: false }])).toBeUndefined()
+    expect(qc.getQueryData(currentUserKey())).toBeNull()
   })
 
   it('propagates a rejection so the caller can surface an error', async () => {

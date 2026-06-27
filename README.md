@@ -77,6 +77,8 @@ npm run dev                 # http://localhost:5173
 
 The session cookie only flows same-origin, so dev runs through the Vite proxy, which forwards `/api` and `/r` to the backend on `:8000`. If you run over plain HTTP locally, set `SESSION_COOKIE_SECURE=false` in the backend `.env`.
 
+Customized-QR storage needs no AWS locally: with `AWS_S3_BUCKET` empty the backend uses an on-disk gateway that persists composites and logos under `backend/data/storage` (gitignored, auto-created), so customized images survive `--reload` restarts. Set `AWS_S3_BUCKET` + `AWS_REGION` only when you want real S3.
+
 ### Testing
 
 ```bash
@@ -174,6 +176,8 @@ npm run dev                 # http://localhost:5173
 ```
 
 session cookie 只在同源下傳遞，所以開發時走 Vite 的 proxy，把 `/api` 和 `/r` 轉給後端的 `:8000`。本機跑 HTTP 的話，記得把後端 `.env` 的 `SESSION_COOKIE_SECURE` 設成 `false`。
+
+客製化 QR 的儲存在本機不需要 AWS：`AWS_S3_BUCKET` 留空時，後端會用磁碟 gateway 把合成圖與 logo 存在 `backend/data/storage`（已 gitignore、自動建立），所以客製化圖片在 `--reload` 重啟後也不會消失。只有要用真正的 S3 時才設 `AWS_S3_BUCKET` + `AWS_REGION`。
 
 ### 測試
 

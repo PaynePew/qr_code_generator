@@ -14,7 +14,7 @@ describe('normalizeError', () => {
     server.use(
       http.get('http://localhost/api/test-404', () =>
         HttpResponse.json(
-          { code: 'NOT_FOUND', detail: '找不到資源' },
+          { error: { code: 'NOT_FOUND', message: '找不到資源', details: {} } },
           { status: 404 },
         ),
       ),
@@ -61,7 +61,7 @@ describe('normalizeError', () => {
     server.use(
       http.get('http://localhost/api/test-500', () =>
         HttpResponse.json(
-          { code: 'INTERNAL_ERROR', detail: '伺服器錯誤' },
+          { error: { code: 'INTERNAL_ERROR', message: '伺服器錯誤', details: {} } },
           { status: 500 },
         ),
       ),

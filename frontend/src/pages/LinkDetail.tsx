@@ -22,6 +22,7 @@ import { urlSchema } from '@/schemas/url'
 import { cn } from '@/lib/utils'
 import { useLinkEntry, type DerivedEntry } from '@/state/linkEntry'
 import { useCustomization } from '@/state/useCustomization'
+import { useAuth } from '@/state/auth'
 import { getToastOptions } from '@/lib/toastOptions'
 import { nudgeIfDemoReadOnly } from '@/lib/demoNudge'
 import { computeExpiresAt, resolveExpiresAt, toDatetimeLocalValue, PRESET_LABELS, type ExpiresAtPreset } from '@/lib/expiresAtPresets'
@@ -673,6 +674,10 @@ export function LinkDetail() {
 
   const entry = useLinkEntry(token ?? '')
   const customizationHook = useCustomization(token ?? '')
+  // Auth-aware like the dashboard: when the session ends the page must flip to a
+  // logged-out state at once, not keep showing the (now stale) link it last had.
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
+  const isUnauthenticated = !authLoading && !isAuthenticated
 
   const shortUrl = entry.link?.short_url ?? null
 
@@ -841,6 +846,33 @@ export function LinkDetail() {
     )
   }
 
+  // Logged out (e.g. signed out while on this page, or a deep link with no
+  // session): show a clear prompt instead of the previous user's link data.
+  if (isUnauthenticated) {
+    return (
+      <div className="flex flex-col gap-6 max-w-2xl">
+        <button
+          type="button"
+          onClick={() => navigate('/dashboard')}
+          className="self-start inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          儀表板
+        </button>
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 flex flex-col gap-2">
+          <span>請先登入後再查看此連結的詳情與分析。</span>
+          <button
+            type="button"
+            onClick={() => navigate('/dashboard')}
+            className="self-start text-sm text-primary underline underline-offset-2 hover:opacity-80"
+          >
+            回到儀表板登入
+          </button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex flex-col gap-6 max-w-2xl">
       <button
@@ -875,19 +907,38 @@ export function LinkDetail() {
         </div>
       )}
 
-      {/* Owner-only (ADR 0009): a Link the caller does not own returns 404,
-          identical to a Link that does not exist — existence is not leaked. */}
-      {entry.queryError?.status === 404 && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          找不到此連結。它可能已從系統中移除。
+      {/* Not signed in (401): a deep link opened without a session. Show a clear
+          "log in" prompt rather than a generic error or an endless spinner. */}
+      {entry.queryError?.status === 401 && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 flex flex-col gap-2">
+          <span>請先登入後再查看此連結的詳情與分析。</span>
+          <button
+            type="button"
+            onClick={() => navigate('/dashboard')}
+            className="self-start text-sm text-primary underline underline-offset-2 hover:opacity-80"
+          >
+            回到儀表板登入
+          </button>
         </div>
       )}
 
-      {entry.queryError && entry.queryError.status !== 404 && (
-        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
-          載入連結資訊時發生錯誤，請稍後再試。
+      {/* Owner-only (ADR 0009): a Link the caller does not own returns 404,
+          identical to a Link that does not exist — existence is not leaked. A
+          rare explicit 403 means "no permission". */}
+      {(entry.queryError?.status === 404 || entry.queryError?.status === 403) && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          找不到此連結，或你沒有權限查看。它可能不存在或屬於其他帳號。
         </div>
       )}
+
+      {entry.queryError &&
+        entry.queryError.status !== 404 &&
+        entry.queryError.status !== 403 &&
+        entry.queryError.status !== 401 && (
+          <div className="rounded-md border border-destructive/50 bg-destructive/10 p-4 text-sm text-destructive">
+            載入連結資訊時發生錯誤，請稍後再試。
+          </div>
+        )}
 
       {entry.link && (
         <>

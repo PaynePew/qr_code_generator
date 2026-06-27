@@ -14,6 +14,6 @@ import { getToastOptions } from './toastOptions'
  */
 export function nudgeIfDemoReadOnly(err: ApiError | null | undefined): boolean {
   if (!isDemoReadOnly(err)) return false
-  toast.info('這是唯讀的展示帳號，登入即可建立你自己的 QR 碼。', getToastOptions('warning'))
+  toast.info('此為展示帳號，請登入後操作', getToastOptions('warning'))
   return true
 }
