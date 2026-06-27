@@ -314,6 +314,48 @@ describe('LoginControl — logged-out state', () => {
     expect(screen.getAllByLabelText('使用 Google 登入').length).toBeGreaterThan(0)
   })
 
+  it('repaints the Google button after logging out (re-mounts the container)', () => {
+    // Issue 1 regression: after a signed-in -> logout transition the logged-out
+    // branch mounts a FRESH button node; the GIS button must be (re)painted into
+    // it even though `ready`/`isDesktop` did not change. A ref callback handles
+    // this where an effect keyed on those deps would not re-run on the re-mount.
+    const renderFallbackButton = vi.fn()
+    useGoogleOneTapMock.mockReturnValue({
+      showFallback: false,
+      unconfigured: false,
+      ready: true,
+      renderFallbackButton,
+      renderFallbackIconButton: vi.fn(),
+    })
+
+    // Start signed in: the Google container is not mounted, so nothing painted.
+    useAuthMock.mockReturnValue({
+      user: REAL_USER,
+      isLoading: false,
+      isAuthenticated: true,
+      isDemo: false,
+      login: vi.fn(),
+      loginAsGuest: vi.fn(),
+      logout: vi.fn(),
+    })
+    const { rerender } = renderLoginControl()
+    expect(renderFallbackButton).not.toHaveBeenCalled()
+
+    // Log out: the logged-out branch mounts the button node -> it must paint.
+    useAuthMock.mockReturnValue({
+      user: null,
+      isLoading: false,
+      isAuthenticated: false,
+      isDemo: false,
+      login: vi.fn(),
+      loginAsGuest: vi.fn(),
+      logout: vi.fn(),
+    })
+    rerender(createElement(LoginControl))
+
+    expect(renderFallbackButton).toHaveBeenCalled()
+  })
+
   it('passes enabled=false to useGoogleOneTap while the session is loading', () => {
     useAuthMock.mockReturnValue({
       user: null,
