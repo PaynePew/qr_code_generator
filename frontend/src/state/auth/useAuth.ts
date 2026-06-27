@@ -30,26 +30,26 @@ export function useAuth(): UseAuthResult {
     retry: false,
   })
 
+  // Seed the new user, drop the previous user's data, and REFETCH whatever is
+  // mounted — `resetQueries` re-runs active observers (e.g. the dashboard list),
+  // so the UI reflects the new session immediately instead of needing a manual
+  // refresh. Excludes the auth/me key (we just set it; don't wipe it). Keeping
+  // the me query intact also avoids the clear()+refetch race the old code hit.
+  const seedSession = (user: AuthUser) => {
+    queryClient.setQueryData(currentUserKey(), user)
+    queryClient.resetQueries({ predicate: (q) => q.queryKey[0] !== 'auth' })
+  }
+
   const loginMutation = useMutation<AuthUser, ApiError, string>({
     mutationFn: (credential) => startSession(credential),
-    onSuccess(user) {
-      // Drop any prior user's cached links/analytics before seeding the new
-      // session — a shared browser must not serve user A's data to user B (qr-1ch).
-      queryClient.clear()
-      queryClient.setQueryData(currentUserKey(), user)
-    },
+    onSuccess: seedSession,
   })
 
   // "Try as guest" — start a session as the shared read-only demo account. Same
   // write-through as a real login so the UI immediately reflects the demo user.
   const guestMutation = useMutation<AuthUser, ApiError>({
     mutationFn: () => enterDemo(),
-    onSuccess(user) {
-      // Drop any prior user's cached links/analytics before seeding the new
-      // session — a shared browser must not serve user A's data to user B (qr-1ch).
-      queryClient.clear()
-      queryClient.setQueryData(currentUserKey(), user)
-    },
+    onSuccess: seedSession,
   })
 
   const logoutMutation = useMutation<void, ApiError>({
@@ -57,10 +57,12 @@ export function useAuth(): UseAuthResult {
     onSuccess() {
       // Stop One Tap from silently re-authenticating the just-signed-out user.
       getGoogleIdentity()?.disableAutoSelect()
-      // Clear the signed-out user's cached links/analytics so the next user on a
-      // shared browser starts clean (qr-1ch).
-      queryClient.clear()
+      // Mark logged-out, then drop the signed-out user's cached links/analytics
+      // so the dashboard flips to its unauthenticated state at once and the next
+      // user on a shared browser starts clean (qr-1ch). The me query is set
+      // first and excluded from removal so auth state resolves immediately.
       queryClient.setQueryData(currentUserKey(), null)
+      queryClient.removeQueries({ predicate: (q) => q.queryKey[0] !== 'auth' })
     },
   })
 
