@@ -10,17 +10,17 @@
 
 ### Screenshots
 
-*The generator: paste a URL and get a styled QR. 產生頁：貼上網址，拿到自訂樣式的 QR。*
+*Home — the generator: paste a URL, live‑preview the styling, and get a short link + QR. 首頁產生器：貼上網址，即時預覽樣式，拿到短連結與 QR。*
 
-![Generator page](docs/screenshots/generator.png)
+![Home — QR generator](docs/screenshots/generator.png)
 
-*The dashboard: your links with their state and scan counts. Dashboard：自己的連結，含狀態和掃描次數。*
+*Dashboard — every link you own, with its state (active / expired) and scan count. 儀表板：你建立的每個連結，含狀態（使用中／已過期）與掃描次數。*
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
-*Link detail: customization and scan analytics. 連結詳情：自訂樣式與掃描統計。*
+*Scan analytics: a 30‑day scan trend, success rate, and privacy‑safe geo / device breakdowns. 掃描追蹤圖表：30 天掃描趨勢、成功率，以及不可回推個人的地區／裝置統計。*
 
-![Link detail](docs/screenshots/link-detail.png)
+![Scan analytics chart](docs/screenshots/analytics.png)
 
 ---
 
@@ -63,8 +63,10 @@ graph TB
     RDR --> DB
     RDR --> GEO
 
-    classDef store fill:#cfe8ff,stroke:#06c;
-    classDef proxy fill:#ffe8b3,stroke:#c80;
+    %% Explicit dark text (color:) so the light fills stay legible on
+    %% GitHub's dark theme, where node text would otherwise default to light.
+    classDef store fill:#cfe8ff,stroke:#0369a1,color:#0b2942,stroke-width:1.5px;
+    classDef proxy fill:#ffe0a3,stroke:#b45309,color:#3b2600,stroke-width:1.5px;
     class DB,S3 store;
     class CADDY,CF proxy;
 ```
@@ -84,7 +86,7 @@ graph TB
 
 ## English
 
-Paste in a URL and you get back a short link and its QR image. It started as a side project for practicing system design, then grew into a deployable multi-tenant service: Google sign-in, each person manages their own links, QR codes can be restyled, and scans record a small amount of analytics that cannot be traced back to an individual.
+BBQRcode Generator is a production, multi-tenant URL shortener and QR platform. Paste a destination URL and get a short link plus a fully styled, downloadable QR code — then manage every link from your own dashboard, restyle its QR, and read scan analytics that are private by construction. It is engineered to run in production: Google sign-in backed by first-party `httpOnly` sessions, a strict link lifecycle (`active` / `expired` / `deleted`), per-account and per-IP rate limiting, and analytics that record only coarse, non-identifying signals — never a raw IP or user agent. The whole system ships as a single FastAPI + React 19 container behind a shared edge proxy, with PostgreSQL, S3-backed QR assets served through a CDN, and automated GitHub Actions CI/CD.
 
 ### Features
 
@@ -185,7 +187,7 @@ A few environment variables worth knowing about. The full list is in `.env.examp
 
 ## 繁體中文
 
-把一個網址貼進來，就會拿到一組短連結和對應的 QR 圖。一開始是拿來練系統設計的 side project，後來慢慢長成一個能部署的多租戶服務：有 Google 登入、每個人管自己的連結、QR 可以改樣式，掃描還會記一點不會回推到個人的統計。
+BBQRcode Generator 是一個正式上線、多租戶的短網址與 QR 平台。貼上目標網址，立即拿到短連結與可自訂樣式、可下載的 QR 圖；接著在自己的儀表板管理每一個連結、調整 QR 外觀，並查看以隱私為前提設計的掃描統計。它是為了正式上線而打造：Google 登入搭配自家 `httpOnly` session、嚴謹的連結生命週期（`active`／`expired`／`deleted`）、每帳號與每 IP 雙重速率限制，掃描只記錄粗粒度、無法回推個人的訊號——絕不存原始 IP 或 User-Agent。整個系統以單一 FastAPI + React 19 容器部署在共用邊緣代理後面，搭配 PostgreSQL、透過 CDN 提供的 S3 QR 圖檔，以及 GitHub Actions 自動化 CI/CD。
 
 ### 功能
 
