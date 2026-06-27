@@ -2,23 +2,22 @@
 
 [English](#english) · [繁體中文](#繁體中文)
 
-**BBQRcode Generator** turns URLs into short links and QR codes — with accounts, custom styling, and scan analytics. (The name is a grill pun: **BBQ** + **QR code**, hence the roast-chicken mark and the warm Honey Roast theme.)
-**BBQRcode Generator** 把網址變成短連結和 QR Code，附帳號、自訂樣式和掃描統計。（名字是燒烤雙關：**BBQ** ＋ **QR code**，所以用了烤雞 logo 和蜜烤暖色主題。）
-
+**BBQRcode Generator** turns URLs into short links and QR codes — with accounts, custom styling, and scan analytics.
+**BBQRcode Generator** 把網址變成短連結和 QR Code，附帳號、自訂樣式和掃描統計。
 **Live at [qrcode.paynepew.dev](https://qrcode.paynepew.dev).** You can look around with the read-only demo account, no Google sign-in needed.
 **線上版：[qrcode.paynepew.dev](https://qrcode.paynepew.dev)**，可以用唯讀 demo 帳號直接逛，不必登入 Google。
 
 ### Screenshots
 
-*Home — the generator: paste a URL, live‑preview the styling, and get a short link + QR. 首頁產生器：貼上網址，即時預覽樣式，拿到短連結與 QR。*
+_Home — the generator: paste a URL, live‑preview the styling, and get a short link + QR. 首頁產生器：貼上網址，即時預覽樣式，拿到短連結與 QR。_
 
 ![Home — QR generator](docs/screenshots/generator.png)
 
-*Dashboard — every link you own, with its state (active / expired) and scan count. 儀表板：你建立的每個連結，含狀態（使用中／已過期）與掃描次數。*
+_Dashboard — every link you own, with its state (active / expired) and scan count. 儀表板：你建立的每個連結，含狀態（使用中／已過期）與掃描次數。_
 
 ![Dashboard](docs/screenshots/dashboard.png)
 
-*Scan analytics: a 30‑day scan trend, success rate, and privacy‑safe geo / device breakdowns. 掃描追蹤圖表：30 天掃描趨勢、成功率，以及不可回推個人的地區／裝置統計。*
+_Scan analytics: a 30‑day scan trend, success rate, and privacy‑safe geo / device breakdowns. 掃描追蹤圖表：30 天掃描趨勢、成功率，以及不可回推個人的地區／裝置統計。_
 
 ![Scan analytics chart](docs/screenshots/analytics.png)
 
@@ -101,16 +100,16 @@ BBQRcode Generator is a production, multi-tenant URL shortener and QR platform. 
 
 ### Tech stack
 
-| Layer | What it uses |
-|---|---|
-| Backend | Python, FastAPI, SQLAlchemy 2.0, Alembic, Pydantic v2 |
-| Frontend | React 19, TypeScript, Vite, Tailwind CSS v4, TanStack Query/Form, React Router |
-| Database | PostgreSQL |
-| Object storage | AWS S3 for custom QR assets (an on-disk gateway in local dev) |
-| Auth | Google OAuth ID token verification plus a signed session cookie |
-| Geo | GeoLite2-City for offline country and subdivision lookup at scan time |
-| QR rendering | qrcode for the backend vanilla image, qr-code-styling for the frontend custom render |
-| Deploy | Docker, docker-compose, a single uvicorn worker, CloudFront CDN |
+| Layer          | What it uses                                                                         |
+| -------------- | ------------------------------------------------------------------------------------ |
+| Backend        | Python, FastAPI, SQLAlchemy 2.0, Alembic, Pydantic v2                                |
+| Frontend       | React 19, TypeScript, Vite, Tailwind CSS v4, TanStack Query/Form, React Router       |
+| Database       | PostgreSQL                                                                           |
+| Object storage | AWS S3 for custom QR assets (an on-disk gateway in local dev)                        |
+| Auth           | Google OAuth ID token verification plus a signed session cookie                      |
+| Geo            | GeoLite2-City for offline country and subdivision lookup at scan time                |
+| QR rendering   | qrcode for the backend vanilla image, qr-code-styling for the frontend custom render |
+| Deploy         | Docker, docker-compose, a single uvicorn worker, CloudFront CDN                      |
 
 ### Getting started
 
@@ -150,22 +149,22 @@ npm run e2e --prefix frontend          # Playwright e2e
 
 ### API overview
 
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/api/qr/create` | Create a link and QR |
-| GET | `/api/qr` | List your links |
-| GET | `/api/qr/{token}` | Link info |
-| PATCH | `/api/qr/{token}` | Update url, label, or expiry (reactivation) |
-| DELETE | `/api/qr/{token}` | Soft delete |
-| GET | `/api/qr/{token}/image` | Get the QR image |
-| GET, PUT | `/api/qr/{token}/customization` | Read or save styling |
-| GET | `/api/qr/{token}/logo` | Stream the owner's uploaded logo (owner-only) |
-| GET | `/api/qr/{token}/analytics` | Scan analytics |
-| GET | `/r/{token}` | Public redirect |
-| POST | `/api/auth/session` | Sign in with a Google ID token |
-| POST | `/api/auth/demo-session` | Demo sign-in |
-| DELETE | `/api/auth/session` | Sign out |
-| GET | `/api/auth/me` | Current user |
+| Method   | Path                            | Purpose                                       |
+| -------- | ------------------------------- | --------------------------------------------- |
+| POST     | `/api/qr/create`                | Create a link and QR                          |
+| GET      | `/api/qr`                       | List your links                               |
+| GET      | `/api/qr/{token}`               | Link info                                     |
+| PATCH    | `/api/qr/{token}`               | Update url, label, or expiry (reactivation)   |
+| DELETE   | `/api/qr/{token}`               | Soft delete                                   |
+| GET      | `/api/qr/{token}/image`         | Get the QR image                              |
+| GET, PUT | `/api/qr/{token}/customization` | Read or save styling                          |
+| GET      | `/api/qr/{token}/logo`          | Stream the owner's uploaded logo (owner-only) |
+| GET      | `/api/qr/{token}/analytics`     | Scan analytics                                |
+| GET      | `/r/{token}`                    | Public redirect                               |
+| POST     | `/api/auth/session`             | Sign in with a Google ID token                |
+| POST     | `/api/auth/demo-session`        | Demo sign-in                                  |
+| DELETE   | `/api/auth/session`             | Sign out                                      |
+| GET      | `/api/auth/me`                  | Current user                                  |
 
 ### Configuration
 
@@ -202,16 +201,16 @@ BBQRcode Generator 是一個正式上線、多租戶的短網址與 QR 平台。
 
 ### 技術棧
 
-| 層 | 用到的東西 |
-|---|---|
-| 後端 | Python, FastAPI, SQLAlchemy 2.0, Alembic, Pydantic v2 |
-| 前端 | React 19, TypeScript, Vite, Tailwind CSS v4, TanStack Query/Form, React Router |
-| 資料庫 | PostgreSQL |
-| 物件儲存 | AWS S3（存自訂 QR 圖檔；本機用磁碟 gateway，存在 `backend/data/storage`） |
-| 認證 | Google OAuth ID token 驗證，加上簽章 session cookie |
-| 地理 | GeoLite2-City（離線查詢，掃描時推算國家與行政區） |
-| QR 產生 | qrcode（後端原始圖），qr-code-styling（前端自訂樣式） |
-| 部署 | Docker, docker-compose, 單一 uvicorn worker, CloudFront CDN |
+| 層       | 用到的東西                                                                     |
+| -------- | ------------------------------------------------------------------------------ |
+| 後端     | Python, FastAPI, SQLAlchemy 2.0, Alembic, Pydantic v2                          |
+| 前端     | React 19, TypeScript, Vite, Tailwind CSS v4, TanStack Query/Form, React Router |
+| 資料庫   | PostgreSQL                                                                     |
+| 物件儲存 | AWS S3（存自訂 QR 圖檔；本機用磁碟 gateway，存在 `backend/data/storage`）      |
+| 認證     | Google OAuth ID token 驗證，加上簽章 session cookie                            |
+| 地理     | GeoLite2-City（離線查詢，掃描時推算國家與行政區）                              |
+| QR 產生  | qrcode（後端原始圖），qr-code-styling（前端自訂樣式）                          |
+| 部署     | Docker, docker-compose, 單一 uvicorn worker, CloudFront CDN                    |
 
 ### 快速開始
 
@@ -251,22 +250,22 @@ npm run e2e --prefix frontend          # Playwright e2e
 
 ### API 一覽
 
-| 方法 | 路徑 | 用途 |
-|---|---|---|
-| POST | `/api/qr/create` | 建立連結與 QR |
-| GET | `/api/qr` | 列出自己的連結 |
-| GET | `/api/qr/{token}` | 連結資訊 |
-| PATCH | `/api/qr/{token}` | 更新網址 / label / 到期時間（即重新啟用）|
-| DELETE | `/api/qr/{token}` | 軟刪除 |
-| GET | `/api/qr/{token}/image` | 取得 QR 圖 |
-| GET, PUT | `/api/qr/{token}/customization` | 讀取或儲存樣式 |
-| GET | `/api/qr/{token}/logo` | 串流擁有者上傳的 logo（僅擁有者）|
-| GET | `/api/qr/{token}/analytics` | 掃描統計 |
-| GET | `/r/{token}` | 公開轉址 |
-| POST | `/api/auth/session` | 用 Google ID token 登入 |
-| POST | `/api/auth/demo-session` | demo 登入 |
-| DELETE | `/api/auth/session` | 登出 |
-| GET | `/api/auth/me` | 目前登入者 |
+| 方法     | 路徑                            | 用途                                      |
+| -------- | ------------------------------- | ----------------------------------------- |
+| POST     | `/api/qr/create`                | 建立連結與 QR                             |
+| GET      | `/api/qr`                       | 列出自己的連結                            |
+| GET      | `/api/qr/{token}`               | 連結資訊                                  |
+| PATCH    | `/api/qr/{token}`               | 更新網址 / label / 到期時間（即重新啟用） |
+| DELETE   | `/api/qr/{token}`               | 軟刪除                                    |
+| GET      | `/api/qr/{token}/image`         | 取得 QR 圖                                |
+| GET, PUT | `/api/qr/{token}/customization` | 讀取或儲存樣式                            |
+| GET      | `/api/qr/{token}/logo`          | 串流擁有者上傳的 logo（僅擁有者）         |
+| GET      | `/api/qr/{token}/analytics`     | 掃描統計                                  |
+| GET      | `/r/{token}`                    | 公開轉址                                  |
+| POST     | `/api/auth/session`             | 用 Google ID token 登入                   |
+| POST     | `/api/auth/demo-session`        | demo 登入                                 |
+| DELETE   | `/api/auth/session`             | 登出                                      |
+| GET      | `/api/auth/me`                  | 目前登入者                                |
 
 ### 設定
 
