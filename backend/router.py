@@ -300,10 +300,16 @@ def qr_image(
             )
         composite = storage.get(customization.image_key)
         if composite is not None:
+            # nosniff: defense-in-depth for a same-origin user-content byte-proxy
+            # (mirrors the owner-logo proxy) — stop the browser MIME-sniffing the
+            # composite into anything executable on a top-level navigation.
             return Response(
                 content=composite,
                 media_type="image/png",
-                headers={"Cache-Control": "no-cache"},
+                headers={
+                    "Cache-Control": "no-cache",
+                    "X-Content-Type-Options": "nosniff",
+                },
             )
         # Composite key recorded but object absent → graceful vanilla fallback.
 
@@ -314,7 +320,10 @@ def qr_image(
     return Response(
         content=png_bytes,
         media_type="image/png",
-        headers={"Cache-Control": "no-cache"},
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 

@@ -579,6 +579,8 @@ class TestQrImageWithCustomization:
         _insert_link(db_session, "img0001")
         resp = client.get("/api/qr/img0001/image")
         assert resp.status_code == 200
+        # Inline-proxied image bytes: not MIME-sniffed (matches the composite path).
+        assert resp.headers["x-content-type-options"] == "nosniff"
         assert resp.content[:4] == b"\x89PNG"
 
     def test_customized_link_serves_stored_composite(
@@ -609,6 +611,9 @@ class TestQrImageWithCustomization:
             img_resp = auth_client.get("/api/qr/img0002/image", follow_redirects=False)
             assert img_resp.status_code == 200
             assert img_resp.headers["content-type"] == "image/png"
+            # Same-origin user-content byte-proxy: must not be MIME-sniffed
+            # (defense-in-depth, mirrors the owner-logo proxy — ADR 0017 §3a/§3b).
+            assert img_resp.headers["x-content-type-options"] == "nosniff"
             # The endpoint serves exactly what was persisted (EXIF-stripped on PUT).
             assert img_resp.content == gw.get(image_key)
             assert img_resp.content[:4] == b"\x89PNG"
