@@ -18,12 +18,15 @@ const FALLBACK_BUTTON_CONFIG: GoogleButtonConfig = {
 }
 
 // Compact icon-only variant for narrow viewports — the full "Sign in with
-// Google" pill is ~200px and overflows the header on mobile (RWD fix).
+// Google" pill is ~200px and overflows the header on mobile (RWD fix). GIS's
+// icon button paints blank in this header, so the caller stacks it at opacity 0
+// over its own Google "G" mark and only uses it to capture the click — the
+// theme/shape are therefore invisible; we keep `large` for a generous hit area.
 const ICON_BUTTON_CONFIG: GoogleButtonConfig = {
   type: 'icon',
   theme: 'outline',
   size: 'large',
-  shape: 'pill',
+  shape: 'square',
 }
 
 export interface UseGoogleOneTapOptions {
@@ -38,6 +41,10 @@ export interface UseGoogleOneTapResult {
   showFallback: boolean
   /** True when no Google client id is configured — the whole feature is unavailable. */
   unconfigured: boolean
+  /** True once the GIS script is loaded and `renderButton` can actually paint.
+   * Callers key their render effect on this so a late-loading script still
+   * paints instead of silently no-opping on the first commit. */
+  ready: boolean
   /** Ref-callback that renders Google's official full "Sign in with Google" button. */
   renderFallbackButton: (element: HTMLElement | null) => void
   /** Ref-callback that renders the compact icon-only button (narrow viewports). */
@@ -57,6 +64,7 @@ export function useGoogleOneTap({
   enabled,
 }: UseGoogleOneTapOptions): UseGoogleOneTapResult {
   const [showFallback, setShowFallback] = useState(false)
+  const [ready, setReady] = useState(false)
   const initializedRef = useRef(false)
   // Keep the latest callback without re-running the init effect on every render.
   // Write the ref in an effect (not during render) so render stays pure — the GIS
@@ -87,6 +95,9 @@ export function useGoogleOneTap({
         setShowFallback(true)
         return
       }
+
+      // GIS is live — let the caller paint the official button now.
+      setReady(true)
 
       if (!initializedRef.current) {
         gsi.initialize({
@@ -119,5 +130,5 @@ export function useGoogleOneTap({
     getGoogleIdentity()?.renderButton(element, ICON_BUTTON_CONFIG)
   }, [])
 
-  return { showFallback, unconfigured, renderFallbackButton, renderFallbackIconButton }
+  return { showFallback, unconfigured, ready, renderFallbackButton, renderFallbackIconButton }
 }

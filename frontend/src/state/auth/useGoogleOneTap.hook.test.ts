@@ -171,6 +171,26 @@ describe('useGoogleOneTap — One Tap prompt behavior', () => {
     expect(gsi.prompt).toHaveBeenCalled()
   })
 
+  it('flips ready=true once the GIS script loads and the API is available', async () => {
+    const { useGoogleOneTap, loadScriptMock, getGsiMock, isDismissedMock } =
+      await importWithClientId(REAL_CLIENT_ID)
+
+    loadScriptMock.mockResolvedValue(undefined)
+    isDismissedMock.mockReturnValue(false)
+    const gsi = makeGsiApi()
+    getGsiMock.mockReturnValue(gsi)
+    gsi.prompt.mockImplementation(() => {})
+
+    const onCredential = vi.fn()
+    const { result } = renderHook(() =>
+      useGoogleOneTap({ onCredential, enabled: true }),
+    )
+
+    // Starts false (script not yet loaded), then flips true after init resolves.
+    expect(result.current.ready).toBe(false)
+    await waitFor(() => expect(result.current.ready).toBe(true))
+  })
+
   it('does NOT re-initialize GIS on subsequent renders (initializedRef guard)', async () => {
     const { useGoogleOneTap, loadScriptMock, getGsiMock, isDismissedMock } =
       await importWithClientId(REAL_CLIENT_ID)

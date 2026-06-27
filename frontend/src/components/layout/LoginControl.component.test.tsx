@@ -41,6 +41,7 @@ const useGoogleOneTapMock = vi.mocked(useGoogleOneTap)
 const NO_FALLBACK_ONE_TAP = {
   showFallback: false,
   unconfigured: false,
+  ready: true,
   renderFallbackButton: vi.fn(),
   renderFallbackIconButton: vi.fn(),
 }
@@ -239,7 +240,7 @@ describe('LoginControl — logged-out state', () => {
     await waitFor(() => expect(loginAsGuest).toHaveBeenCalledTimes(1))
   })
 
-  it('renders the Google fallback button container when showFallback=true', () => {
+  it('renders the Google sign-in container when One Tap fell back (showFallback=true)', () => {
     useAuthMock.mockReturnValue({
       user: null,
       isLoading: false,
@@ -252,18 +253,19 @@ describe('LoginControl — logged-out state', () => {
     useGoogleOneTapMock.mockReturnValue({
       showFallback: true,
       unconfigured: false,
+      ready: true,
       renderFallbackButton: vi.fn(),
       renderFallbackIconButton: vi.fn(),
     })
 
     renderLoginControl()
 
-    // Two affordances render (full button + compact icon); CSS shows one per
-    // breakpoint. In jsdom both are present, so assert at least one exists.
+    // One variant renders per breakpoint (desktop pill / mobile icon). jsdom has
+    // no matchMedia, so useMinWidth defaults to desktop — assert one exists.
     expect(screen.getAllByLabelText('使用 Google 登入').length).toBeGreaterThan(0)
   })
 
-  it('renders the Google fallback button container when unconfigured=true (no client ID)', () => {
+  it('still renders the Google sign-in container when unconfigured=true (no client ID)', () => {
     useAuthMock.mockReturnValue({
       user: null,
       isLoading: false,
@@ -276,6 +278,7 @@ describe('LoginControl — logged-out state', () => {
     useGoogleOneTapMock.mockReturnValue({
       showFallback: false,
       unconfigured: true,
+      ready: false,
       renderFallbackButton: vi.fn(),
       renderFallbackIconButton: vi.fn(),
     })
@@ -285,7 +288,10 @@ describe('LoginControl — logged-out state', () => {
     expect(screen.getAllByLabelText('使用 Google 登入').length).toBeGreaterThan(0)
   })
 
-  it('does not render the fallback Google button container when One Tap is active', () => {
+  it('always renders the Google sign-in container when logged out, even while One Tap is active', () => {
+    // Bug B regression: the Google affordance must be present whenever logged
+    // out (One Tap is additive), so logging out never strands the user with
+    // only the guest button.
     useAuthMock.mockReturnValue({
       user: null,
       isLoading: false,
@@ -298,13 +304,14 @@ describe('LoginControl — logged-out state', () => {
     useGoogleOneTapMock.mockReturnValue({
       showFallback: false,
       unconfigured: false,
+      ready: true,
       renderFallbackButton: vi.fn(),
       renderFallbackIconButton: vi.fn(),
     })
 
     renderLoginControl()
 
-    expect(screen.queryByLabelText('使用 Google 登入')).toBeNull()
+    expect(screen.getAllByLabelText('使用 Google 登入').length).toBeGreaterThan(0)
   })
 
   it('passes enabled=false to useGoogleOneTap while the session is loading', () => {
