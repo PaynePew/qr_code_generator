@@ -25,38 +25,41 @@ _Scan analytics: a 30‑day scan trend, success rate, and privacy‑safe geo / d
 
 ## Architecture · 系統架構
 
-How the deployed system fits together. The whole app — the React SPA, the `/api` REST endpoints, and the public `/r/{token}` redirect — is **one container behind a shared edge proxy**; Postgres is private, and custom QR images are served from S3 through a CDN.
-部署後的系統怎麼組起來。整個 app——React SPA、`/api` REST、以及公開的 `/r/{token}` 轉址——是**邊緣代理後面的同一個容器**；Postgres 不對外，客製化 QR 圖透過 CDN 從 S3 提供。
+How the deployed system fits together. The whole app — the React SPA, the `/api` REST endpoints, and the public `/r/{token}` redirect — is **one container behind a shared, platform-owned Caddy** that terminates TLS for `qrcode.paynepew.dev`; Postgres is private. Custom QR images take a **separate edge**: the browser loads their bytes directly over HTTPS from CloudFront (which fronts the private S3 bucket via OAC). The two edges are independent — CloudFront never sits in front of the app, and the `/r/{token}` redirect is never CDN-cached.
+部署後的系統怎麼組起來。整個 app——React SPA、`/api` REST、以及公開的 `/r/{token}` 轉址——是**共用、平台層擁有的 Caddy 後面的同一個容器**，由 Caddy 為 `qrcode.paynepew.dev` 卸載 TLS；Postgres 不對外。客製化 QR 圖走**另一條獨立邊緣**：瀏覽器以 HTTPS 直接從 CloudFront 載入圖片位元組（CloudFront 經 OAC front 私有 S3 bucket）。兩條邊緣彼此獨立——CloudFront 絕不在 app 前面，`/r/{token}` 轉址也絕不被 CDN 快取。
 
 ```mermaid
 graph TB
-    subgraph clients["Users · 使用者"]
-        B["Browser · 瀏覽器<br/>(creator 建立者)"]
-        P["Phone camera · 手機相機<br/>(scanner 掃描者)"]
+    subgraph clients["Users 使用者"]
+        B["Browser 瀏覽器<br/>creator 建立者"]
+        P["Phone camera 手機相機<br/>scanner 掃描者"]
     end
 
-    subgraph edge["Edge · 邊緣"]
-        CADDY["Caddy reverse proxy<br/>TLS · qrcode.paynepew.dev"]
-        CF["CloudFront CDN<br/>(custom QR images)"]
+    subgraph frontdoor["App front door 前門"]
+        CADDY["Caddy reverse proxy<br/>TLS termination<br/>qrcode.paynepew.dev<br/>shared · platform-owned<br/>共用 · 平台層擁有"]
     end
 
-    subgraph app["qrcode-app container · FastAPI (one origin)"]
-        SPA["React SPA<br/>(served as static files)"]
+    subgraph imgcdn["Image CDN 圖片"]
+        CF["CloudFront + OAC<br/>HTTPS · *.cloudfront.net<br/>custom QR images only<br/>只服務圖片"]
+    end
+
+    subgraph app["qrcode-app FastAPI"]
+        SPA["React SPA<br/>served as static files"]
         API["/api/* REST"]
         RDR["/r/{token} redirect"]
     end
 
     DB[("PostgreSQL<br/>users · links · scans")]
     S3[("AWS S3<br/>custom QR images · daily DB backups")]
-    GEO["GeoLite2-City<br/>(offline geo at scan time)"]
+    GEO["GeoLite2-City<br/>offline geo at scan time"]
 
-    B -->|HTTPS| CADDY
+    B -->|"HTTPS · qrcode.paynepew.dev"| CADDY
     P -->|"scan → GET /r/{token}"| CADDY
-    CADDY --> SPA
+    CADDY -->|"plain HTTP · qrcode-app:8000"| SPA
     CADDY --> API
     CADDY --> RDR
-    B -.->|"load <img>"| CF
-    CF -->|OAC private read| S3
+    B -.->|"HTTPS image bytes (302 from /api → CDN)"| CF
+    CF -->|"OAC private read"| S3
     API --> DB
     API --> S3
     RDR --> DB
@@ -66,8 +69,10 @@ graph TB
     %% GitHub's dark theme, where node text would otherwise default to light.
     classDef store fill:#cfe8ff,stroke:#0369a1,color:#0b2942,stroke-width:1.5px;
     classDef proxy fill:#ffe0a3,stroke:#b45309,color:#3b2600,stroke-width:1.5px;
+    classDef cdn fill:#d9f2d9,stroke:#15803d,color:#0b2e0b,stroke-width:1.5px;
     class DB,S3 store;
-    class CADDY,CF proxy;
+    class CADDY proxy;
+    class CF cdn;
 ```
 
 **Request flows · 請求流程**
@@ -76,6 +81,8 @@ graph TB
   瀏覽器 → `POST /api/qr/create`，後端配一個 7 碼 Base62 token、存下 Link、回傳短連結。**QR 圖是在瀏覽器端畫的**（`qr-code-styling`），不是後端產的。
 - **Scan 掃描** — Phone → `GET /r/{token}`. The backend derives the link state (`active` / `expired` / `deleted`) and returns a **302** to the destination (or **410 Gone**). The scan is recorded **asynchronously**, keeping only coarse, non-identifying fields (country, subdivision, device class) — never the raw IP or user agent.
   手機 → `GET /r/{token}`，後端推導連結狀態（`active`／`expired`／`deleted`），回 **302** 轉到目標（或 **410**）。掃描以**非同步**記錄，只留粗粒度、無法回推個人的欄位（國家、行政區、裝置類別），絕不存原始 IP 或 UA。
+- **Image 圖片** — A customized QR's `<img>` hits `GET /api/qr/{token}/image` (through Caddy), which returns a **302 to the CloudFront URL**; the browser then loads the image **bytes directly from CloudFront** over HTTPS (CloudFront reads the private S3 bucket via OAC). This image edge is **separate from the redirect** — CloudFront never fronts the app, and the `/r/{token}` 302 is never CDN-cached.
+  圖片 — 客製化 QR 的 `<img>` 先打 `GET /api/qr/{token}/image`（經 Caddy），回 **302 指向 CloudFront URL**；瀏覽器再以 HTTPS **直接從 CloudFront 載入圖片位元組**（CloudFront 經 OAC 讀私有 S3）。這條圖片邊緣與轉址**各自獨立**——CloudFront 絕不在 app 前面，`/r/{token}` 的 302 也絕不被 CDN 快取。
 - **Deploy 部署** — GitHub Actions builds a Docker image → pushes to GHCR → the VPS **pulls** it and runs the container (with an Alembic migration step) behind the shared edge proxy. No source tree lives on the box.
   GitHub Actions 建 Docker image → 推上 GHCR → VPS **pull** 下來、跑容器（含 Alembic migration 步驟），掛在共用邊緣代理後面。機器上沒有原始碼。
 
